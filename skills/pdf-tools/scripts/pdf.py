@@ -238,6 +238,45 @@ def figure_region(
     return x0, top, x1, caption["bottom"]
 
 
+def snap_box(
+    page, box: tuple[float, float, float, float], growth: float = 1.0
+) -> tuple[float, float, float, float]:
+    """Grow a crop box until it no longer cuts through any drawn or written ink.
+
+    Objects that merely cross an edge are pulled in whole; objects that sit far
+    outside are left alone, so a box grows to the next whitespace boundary rather
+    than swallowing the page.
+    """
+    x0, y0, x1, y1 = box
+    span_x, span_y = x1 - x0, y1 - y0
+    objects = [
+        (obj["x0"], obj["top"], obj["x1"], obj["bottom"])
+        for group in (page.chars, page.curves, page.rects, page.lines, page.images)
+        for obj in group
+    ]
+    for _ in range(8):
+        changed = False
+        for ox0, oy0, ox1, oy1 in objects:
+            if ox1 <= x0 or ox0 >= x1 or oy1 <= y0 or oy0 >= y1:
+                continue
+            if ox0 >= x0 and ox1 <= x1 and oy0 >= y0 and oy1 <= y1:
+                continue  # already fully inside
+            nx0, ny0 = min(x0, ox0), min(y0, oy0)
+            nx1, ny1 = max(x1, ox1), max(y1, oy1)
+            if (
+                nx0 < x0 - growth * span_x
+                or nx1 > x1 + growth * span_x
+                or ny0 < y0 - growth * span_y
+                or ny1 > y1 + growth * span_y
+            ):
+                continue  # too far away to belong to this box
+            x0, y0, x1, y1 = nx0, ny0, nx1, ny1
+            changed = True
+        if not changed:
+            break
+    return x0, y0, x1, y1
+
+
 def render_region(
     pdf: Path, page: int, region: tuple[float, float, float, float], out: Path, dpi: int
 ) -> Path:
@@ -472,11 +511,26 @@ def cmd_pages(args: argparse.Namespace) -> int:
 
     if crop:
         # pdftoppm's -x/-y are points from the top-left corner, same as pdfplumber
-        x0, y0, x1, y1 = crop
+        boxes: dict[int, tuple[float, float, float, float]] = {n: crop for n in pages}
+        if args.snap:
+            import pdfplumber
+
+            with pdfplumber.open(str(pdf)) as doc:
+                for number in pages:
+                    if number <= len(doc.pages):
+                        boxes[number] = snap_box(doc.pages[number - 1], crop)
+            for number in pages:
+                if boxes[number] != crop:
+                    x0, y0, x1, y1 = boxes[number]
+                    print(
+                        f"page {number}: snapped crop to x{x0:.0f},y{y0:.0f},"
+                        f"x{x1:.0f},y{y1:.0f}",
+                        file=sys.stderr,
+                    )
         written: list[Path] = []
         for number in pages:
             target = out_dir / f"{pdf.stem}-p{number}-crop"
-            written.append(render_region(pdf, number, crop, target, args.dpi))
+            written.append(render_region(pdf, number, boxes[number], target, args.dpi))
         for path in written:
             print(path)
         return 0
@@ -719,6 +773,11 @@ def main() -> int:
         "--crop",
         metavar="X0,Y0,X1,Y1",
         help="render only this box, in PDF points from the page's top-left corner",
+    )
+    p.add_argument(
+        "--snap",
+        action="store_true",
+        help="grow --crop until it stops cutting through text or artwork",
     )
     p.set_defaults(func=cmd_pages)
 

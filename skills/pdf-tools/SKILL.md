@@ -57,7 +57,7 @@ needed it, then let the user decide.
 | Words without layout padding | `text --mode raw` |
 | See a page: charts, scans, columns | `pages --out /tmp/doc --pages 3` then `read` the PNG |
 | A figure or table only | `figures --pages 4 --out /tmp/figs` then `read` each PNG |
-| A specific region (equation, panel) | `pages --out /tmp/one --pages 2 --crop 40,330,300,400 --dpi 200` |
+| A specific region (equation, panel) | `pages --out /tmp/one --pages 2 --crop 40,330,300,400 --snap --dpi 200` |
 | Math worth trusting | LaTeX source for arXiv papers, else crop and read |
 | Table cells, borderless (papers, reports) | `tables --strategy text --format md` |
 | Table cells, ruled (forms) | `tables --format md` (default `lines` strategy) |
@@ -123,7 +123,10 @@ needed it, then let the user decide.
   needs `pages --crop` by hand.
 - **`--crop` takes PDF points from the top-left corner.** To convert from a page
   you already rendered at `--dpi D`: `point = pixel * 72 / D`. Crop boxes are
-  scaled internally, so the same numbers work at any dpi.
+  scaled internally, so the same numbers work at any dpi. Add `--snap` to grow a
+  hand-guessed box until it stops cutting through text or artwork — a hand
+  estimate usually clips the top of a fraction or the tail of a glyph, and the
+  result looks plausible while being wrong.
 - **Language data.** Only `eng` is available for `ocr`. If another language is
   required, stop and report it instead of OCRing with the wrong model.
 - **No usable text layer?** `info` reports `recommendation: ocr`; `text` exits
