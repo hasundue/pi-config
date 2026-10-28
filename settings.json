@@ -4,5 +4,10 @@
   "hideThinkingBlock": true,
   "defaultThinkingLevel": "high",
   "defaultProvider": "opencode-go",
-  "defaultModel": "deepseek-v4.1-flash"
+  "defaultModel": "deepseek-v4.1-flash",
+  "defaultTools": [
+    "+grep",
+    "+find",
+    "+ls"
+  ]
 }
