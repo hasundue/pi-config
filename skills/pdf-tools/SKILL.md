@@ -9,8 +9,9 @@ description: >
 
 # PDF Tools
 
-One script does the work: `scripts/pdf.py`. Start with `info` — it reports whether
-the file has a text layer or needs OCR, which decides everything else.
+Confirm the toolchain under Requirements first; if anything is missing, stop there.
+Otherwise one script does the work: `scripts/pdf.py`. Start with `info` — it
+reports whether the file has a text layer or needs OCR, which decides the rest.
 
 ```bash
 P=~/.pi/agent/skills/pdf-tools/scripts/pdf.py
@@ -19,6 +20,28 @@ python3 "$P" info doc.pdf     # pages, metadata, text_layer, recommendation
 
 Run `python3 "$P" <subcommand> --help` for flags. Page selections are 1-based:
 `--pages 3`, `--pages 1-5`, `--pages 10-`, `--pages 1-3,7`.
+
+## Requirements
+
+PDF work needs all of the following. None of it is optional.
+
+| Kind | Must be available | Used for |
+| --- | --- | --- |
+| Binary | `pdftoppm`, `pdftotext`, `pdfinfo` | rendering, text extraction, metadata |
+| Binary | `tesseract` | OCR |
+| Binary | `qpdf` | split, merge, rotate, encrypt/decrypt, overlay, check |
+| Python | `pypdf` | page assembly, merge/split, encryption |
+| Python | `pdfplumber` | tables and coordinate-filtered text |
+
+Check before starting anything:
+
+```bash
+python3 ~/.pi/agent/skills/pdf-tools/scripts/verify-env.py
+```
+
+**If anything is missing, stop.** Do not substitute other tools, install
+packages, or work around it partially. Report what is missing and which step
+needed it, then let the user decide.
 
 ## Route by need
 
@@ -31,7 +54,6 @@ Run `python3 "$P" <subcommand> --help` for flags. Page selections are 1-based:
 | Table cells, borderless (papers, reports) | `tables --strategy text --format md` |
 | Table cells, ruled (forms) | `tables --format md` (default `lines` strategy) |
 | Scanned page to text | `ocr --pages 3 --lang eng` |
-| Toolchain health check | `python3 scripts/verify-env.py` |
 
 `text` and `tables` write to stdout; `pages` writes files and prints their paths.
 
@@ -51,29 +73,10 @@ Run `python3 "$P" <subcommand> --help` for flags. Page selections are 1-based:
   interpreted by `ocr`; render with `pages` and look at it.
 - **Cost of rendering.** Every page image is a separate attachment. Select pages
   and use `--dpi 150` for reading; reserve `--dpi 300` for OCR.
-- **Language data.** `ocr --lang eng` is all that ships here. Other languages
-  need the matching tesseract data added to `extraPackages`.
+- **Language data.** Only `eng` is available for `ocr`. If another language is
+  required, stop and report it instead of OCRing with the wrong model.
 - **No usable text layer?** `info` reports `recommendation: ocr`; `text` exits
   with a hint instead of returning a near-empty blob.
-
-## Environment
-
-Installed through `programs.pi-coding-agent.extraPackages` in
-`dotnix/configs/home/pi.nix`, so it is on `PATH` for this agent and its `bash`
-tool — nothing to install at runtime. After changing that file, rebuild
-(`nix run .#home-build`), switch (`nix run .#home-switch`), and restart pi.
-
-| Kind | Package | Gives you |
-| --- | --- | --- |
-| CLI | `poppler-utils` | `pdftoppm`, `pdftotext`, `pdfinfo`, `pdfimages`, `pdfunite`, `pdfseparate`, `pdftohtml` |
-| CLI | `tesseract` | OCR, with `tsv` / `hocr` output for word coordinates |
-| CLI | `qpdf` | split, merge, rotate, encrypt/decrypt, overlay, structural check |
-| Python | `pypdf` | pure Python page assembly, merge/split, encryption |
-| Python | `pdfplumber` | pure Python tables and coordinate-filtered text |
-
-`pdf2image` and `pytesseract` are deliberately absent: both merely shell out to
-the binaries above. There is no `pymupdf`, so rendering always goes through
-`pdftoppm`.
 
 ## Extending
 
