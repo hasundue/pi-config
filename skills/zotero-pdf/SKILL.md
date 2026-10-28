@@ -1,0 +1,78 @@
+---
+name: zotero-pdf
+description: >
+  Find a paper in the local Zotero library and get its PDF. Use when the user
+  names a paper, author, or topic they expect to be in Zotero, asks for "the
+  paper" or "the PDF" without giving a path or URL, or wants the bibliographic
+  metadata (title, authors, DOI, abstract) of a Zotero item.
+---
+
+# Zotero PDF
+
+Resolve a paper to a local PDF through Zotero's read-only local API, then hand the
+file to the `pdf-tools` skill to read it. This skill only *fetches*; extraction and
+rendering belong to `pdf-tools`.
+
+```bash
+Z=<skill-dir>/scripts/zotero.py
+python3 "$Z" search "Siegert pseudostate"      # key, year, type, author, title
+python3 "$Z" info BH8XS93N                     # metadata, abstract, PDF status
+python3 "$Z" path BH8XS93N                     # local PDF path
+```
+
+Paths are relative to this skill's directory — resolve `<skill-dir>` from the
+directory the harness reports for this skill; never hardcode an absolute path.
+
+## Requirements
+
+Zotero 7 must be running with **Settings → Advanced → "Allow other applications on
+this computer to communicate with Zotero"** enabled, and the PDF must already be
+stored (synced or downloaded) in the library. The script uses only the Python
+standard library.
+
+If Zotero is unreachable, `zotero.py` exits non-zero with an explanation: stop
+and tell the user. Do not silently substitute a web search — say that the item is
+not reachable in Zotero and ask whether to look it up online instead.
+
+## Workflow
+
+1. **Search** — `search QUERY` prints `KEY  YEAR  TYPE  FIRSTAUTHOR  TITLE`.
+   Use `--mode titleCreatorYear` for a focused search, `--limit` to widen it,
+   `--json` for structured output.
+2. **Confirm** — `info KEY` shows title, authors, date, venue, DOI, URL, the
+   abstract, and whether a PDF is attached (`pdf ... [attachment-key, ok]`).
+3. **Resolve** — `path KEY` prints the PDF path. Pass an attachment key too if the
+   user gives one. `--copy-to DIR` copies it under a clean name
+   (`2007_Batishchev_Title.pdf`) which is convenient when a shell pipeline chokes
+   on the spaces and percent-escapes of Zotero's own filenames.
+4. **Read** — switch to `pdf-tools` with that path:
+
+   ```bash
+   python3 <pdf-tools-skill-dir>/scripts/pdf.py info "$PDF"
+   ```
+
+   `info` decides between text and OCR; `equations` and `figures` isolate
+   displays; `text --columns auto` handles two-column layouts.
+
+## Gotchas
+
+- **Do not try to download the bytes.** The API answers
+  `/items/<KEY>/file` with a 302 and no body. `links.enclosure.href` in the item
+  metadata is the only route to the file, which is what `path` prints.
+- **Zotero filenames are URL-encoded and full of spaces.** `path` decodes them;
+  quote the result, or use `--copy-to` when another tool will consume it.
+- **Search results exclude attachments.** Zotero matches attachment titles too,
+  so a query like `PDF` returns the papers those attachments belong to; when you
+  already hold an attachment key, pass it straight to `path`.
+- **Read-only.** Items, notes, and annotations cannot be created or edited; the
+  local API is a reader. Full-text search inside PDFs (`/fulltext`) is unreliable
+  in practice (it has returned 404), so search metadata instead, then grep the
+  extracted text with `pdf-tools`.
+- **Not every item has a PDF.** `info` prints `pdf none (<reason>)`; report that
+  rather than searching the filesystem for look-alike files.
+
+## If something goes wrong
+
+This skill is new. If a lookup returns an unexpected shape, `path` points at a
+missing file, or metadata comes back empty, stop the task, say what happened, and
+fix the script with the user before continuing.
