@@ -1,0 +1,17 @@
+# Credentials
+auth.json
+auth.json.backup
+
+# Machine-local state
+trust.json
+models-store.json
+*.backup
+*.log
+
+# Runtime state managed by pi
+sessions/
+tmp/
+npm/
+git/
+bin/
+node_modules/
