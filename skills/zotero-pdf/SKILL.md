@@ -9,6 +9,14 @@ description: >
 
 # Zotero PDF
 
+> **Status: work in progress.** This skill has only been exercised against one
+> library and one Zotero version. When a lookup fails or comes back wrong — an
+> item that exists but is not found, metadata that is empty or mismatched, `path`
+> pointing at a missing file, `start`/`stop` leaving a stray process — **stop the
+> original task**. Say what happened, decide with the user how the skill should
+> behave, fix it (`scripts/zotero.py`, and this file), then resume. Reporting a
+> paper as unavailable because the lookup was broken is worse than asking.
+
 Resolve a paper to a local PDF through Zotero's read-only local API, then hand the
 file to the `pdf-tools` skill to read it. This skill only *fetches*; extraction and
 rendering belong to `pdf-tools`.
@@ -103,9 +111,3 @@ not reachable in Zotero and ask whether to look it up online instead.
   be read.
 - **Not every item has a PDF.** `info` prints `pdf none (<reason>)`; report that
   rather than searching the filesystem for look-alike files.
-
-## If something goes wrong
-
-This skill is new. If a lookup returns an unexpected shape, `path` points at a
-missing file, or metadata comes back empty, stop the task, say what happened, and
-fix the script with the user before continuing.
