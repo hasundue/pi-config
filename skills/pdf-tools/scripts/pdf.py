@@ -82,6 +82,16 @@ def runs(pages: list[int]) -> list[tuple[int, int]]:
     return out
 
 
+def page_sizes(pdf: Path) -> list[tuple[float, float]]:
+    from pypdf import PdfReader
+
+    sizes: list[tuple[float, float]] = []
+    for page in PdfReader(str(pdf)).pages:
+        box = page.mediabox
+        sizes.append((float(box.width), float(box.height)))
+    return sizes
+
+
 def need(*binaries: str) -> None:
     missing = [b for b in binaries if shutil.which(b) is None]
     if missing:
@@ -145,34 +155,78 @@ def cmd_text(args: argparse.Namespace) -> int:
     pdf = args.file
     pages = parse_pages(args.pages, page_count(pdf))
     chunks: list[str] = []
-    for first, last in runs(pages):
-        proc = run(
-            [
-                "pdftotext",
-                f"-{args.mode}",
-                "-enc",
-                "UTF-8",
-                "-f",
-                str(first),
-                "-l",
-                str(last),
-                str(pdf),
-                "-",
-            ]
-        )
-        body = proc.stdout.strip()
-        if len(pages) > 1:
-            body = f"{PAGE_MARK.format(n=first if first == last else f'{first}-{last}')}\n{body}"
-        chunks.append(body)
-    text = "\n\n".join(chunk for chunk in chunks if chunk)
+
+    if args.columns > 1:
+        # Split each page into vertical strips and read them left to right, so a
+        # two-column layout keeps its reading order instead of interleaving.
+        sizes = page_sizes(pdf)
+        for number in pages:
+            width, height = sizes[number - 1]
+            strip = width / args.columns
+            for column in range(args.columns):
+                proc = run(
+                    [
+                        "pdftotext",
+                        f"-{args.mode}",
+                        "-enc",
+                        "UTF-8",
+                        "-f",
+                        str(number),
+                        "-l",
+                        str(number),
+                        "-x",
+                        str(int(strip * column)),
+                        "-y",
+                        "0",
+                        "-W",
+                        str(int(strip)),
+                        "-H",
+                        str(int(height)),
+                        str(pdf),
+                        "-",
+                    ]
+                )
+                body = proc.stdout.strip()
+                if body:
+                    chunks.append(f"--- page {number}, column {column + 1} ---\n{body}")
+        text = "\n\n".join(chunks)
+    else:
+        for first, last in runs(pages):
+            proc = run(
+                [
+                    "pdftotext",
+                    f"-{args.mode}",
+                    "-enc",
+                    "UTF-8",
+                    "-f",
+                    str(first),
+                    "-l",
+                    str(last),
+                    str(pdf),
+                    "-",
+                ]
+            )
+            body = proc.stdout.strip()
+            if len(pages) > 1:
+                body = f"{PAGE_MARK.format(n=first if first == last else f'{first}-{last}')}\n{body}"
+            chunks.append(body)
+        text = "\n\n".join(chunk for chunk in chunks if chunk)
+
     if not text.strip():
         die("pdftotext produced no text; the pages are probably scanned (use `ocr`)")
     if len(text.strip()) < 40:
-        print(
-            "note: very little text came out; if you expected more, the pages are "
-            "probably scanned (use `ocr`)",
-            file=sys.stderr,
-        )
+        if args.columns > 1:
+            print(
+                "note: very little text came out; the column split may be wrong "
+                "(retry without --columns), or the pages are scanned (use `ocr`)",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                "note: very little text came out; if you expected more, the pages are "
+                "probably scanned (use `ocr`)",
+                file=sys.stderr,
+            )
     print(trim(text, args.max_chars))
     return 0
 
@@ -351,6 +405,15 @@ def main() -> int:
         help="layout keeps columns (default); raw keeps content-stream order",
     )
     p.add_argument("--max-chars", type=int, help="truncate output")
+    p.add_argument(
+        "--columns",
+        type=int,
+        default=1,
+        metavar="N",
+        help="split each page into N vertical strips, read left to right (use 2 for "
+        "two-column papers; titles on page 1 usually span the full width, so start "
+        "from page 2)",
+    )
     p.set_defaults(func=cmd_text)
 
     p = sub.add_parser("pages", help="render pages to images with pdftoppm")
@@ -383,6 +446,8 @@ def main() -> int:
     args = parser.parse_args()
     if not args.file.is_file():
         die(f"no such file: {args.file}")
+    if getattr(args, "columns", 1) < 1:
+        die("--columns must be 1 or more")
     return args.func(args)
 
 

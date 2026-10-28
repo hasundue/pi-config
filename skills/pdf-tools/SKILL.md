@@ -52,6 +52,7 @@ needed it, then let the user decide.
 | --- | --- |
 | Is this a scan or a text PDF? | `info` (add `--json` for scripts) |
 | Text of the file or a page range | `text --pages 1-5` |
+| Two-column paper, correct reading order | `text --columns 2 --pages 2-` |
 | Words without layout padding | `text --mode raw` |
 | See a page: charts, scans, columns | `pages --out /tmp/doc --pages 3` then `read` the PNG |
 | Table cells, borderless (papers, reports) | `tables --strategy text --format md` |
@@ -65,6 +66,12 @@ needed it, then let the user decide.
 - **Never hand a PDF to the `read` tool.** It is not an image type there, so the
   bytes come back as text (measured: a raw `%PDF-1.4` dump). Render first with
   `pages`, or use `text`/`tables`.
+- **Two-column layouts interleave.** A plain `text` run reads across both
+  columns line by line, mixing them. `text --columns 2` splits each page into
+  vertical strips and emits left then right, and word spacing survives because
+  the split happens inside `pdftotext`. Page 1 usually carries a full-width
+  title and abstract, so start at `--pages 2-`; never pass `--columns` for a
+  single-column document — it discards most of the text.
 - **ketch vs local extraction.** For a PDF behind a URL, `ketch scrape <url>` is
   the cheapest first look (no OCR), but its extractor drops inter-word spacing —
   text comes out jammed. When the wording matters, download the file and use
