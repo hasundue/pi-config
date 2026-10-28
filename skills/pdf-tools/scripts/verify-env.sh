@@ -57,8 +57,13 @@ PY
 
 if (( run_smoke )); then
   echo "== end-to-end (PDF -> PNG -> OCR) =="
-  tmp=$(mktemp -d)
-  trap 'rm -rf "$tmp"' EXIT
+  if ! tmp=$(mktemp -d 2>/dev/null) || [[ -z "$tmp" ]]; then
+    note "mktemp" "FAILED — cannot create a temp dir"
+    fail=1
+    tmp=""
+  fi
+  if [[ -n "$tmp" ]]; then
+    trap 'rm -rf "$tmp"' EXIT
   python3 - "$tmp" <<'PY' || fail=1
 import sys
 from pathlib import Path
@@ -86,7 +91,10 @@ sys.exit(0 if imgs else 1)
 PY
   then :; else note "pdf2image" "FAILED (poppler missing?)"; fail=1; fi
 
-  img=$(ls "$tmp"/page-*.png 2>/dev/null | head -1)
+  img=""
+  for p in "$tmp"/page-*.png; do
+    [[ -f "$p" ]] && { img="$p"; break; }
+  done
   if [[ -n "$img" ]]; then
     if tesseract "$img" - 2>/dev/null >/dev/null; then
       note "tesseract" "OCR ok on $(basename "$img") (blank page, no text expected)"
@@ -95,6 +103,7 @@ PY
     fi
   else
     note "tesseract" "SKIPPED (no page image)"; fail=1
+  fi
   fi
 fi
 
