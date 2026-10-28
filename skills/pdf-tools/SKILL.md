@@ -17,7 +17,9 @@ its `bash` tool — nothing needs installing at runtime.
 ## Verify the environment first
 
 ```bash
-bash ~/.pi/agent/skills/pdf-tools/scripts/verify-env.sh
+python3 ~/.pi/agent/skills/pdf-tools/scripts/verify-env.py
+python3 …/verify-env.py --no-smoke      # binaries + imports only
+python3 …/verify-env.py --pdf doc.pdf   # smoke test a real PDF
 ```
 
 The script checks every binary and Python import, runs an end-to-end smoke test
@@ -92,7 +94,7 @@ for p in /tmp/scan-*.png; do tesseract "$p" - -l eng 2>/dev/null; done
 pdf-tools/
 ├── SKILL.md
 └── scripts/
-    └── verify-env.sh    # binaries + imports + end-to-end smoke test
+    └── verify-env.py    # binaries + imports + end-to-end smoke test
 ```
 
 Add task-specific scripts under `scripts/` as the need appears; keep them
