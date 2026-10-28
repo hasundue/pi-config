@@ -308,17 +308,39 @@ ketch doctor          # reports browser as "skipped" when not configured
 If browser management is needed (e.g., to install Chromium or check status):
 
 ```bash
-# Point ketch to an existing Chrome installation
-ketch config set browser chrome
+# Value = a PATH-resolvable executable name or an absolute path
+# ("chrome" fails with exec: "chrome": executable file not found — use:)
+ketch config set browser google-chrome    # or chromium, or /abs/path/to/chrome
 
 # Or install Chromium to ketch's cache dir
 ketch browser install
 ```
 
+Static pages always use the plain-HTTP fast path (~0.2s) — the browser only
+runs when a JS shell is detected (or `--force-browser`).
+
+### What a browser does NOT fix (verified 2026-10)
+
+- **Bot walls / WAF**: Reddit rendered, but served "Prove your humanity" — a
+  challenge page, not the article. Headless Chrome is detectable.
+- **HTTP 403 / IP-geo blocks**: Medium still 403s with a browser (same IP).
+- **Login / paywall content**: needs cookies — `--cookie-file <cookies.txt>`;
+  a browser alone shows the login page.
+- **Interaction-only content**: infinite scroll, tab/accordion clicks, form
+  input — a single page load never performs them.
+- **Non-HTML**: PDFs extract only a text layer (a minimal PDF returned 3 words)
+  and the external converter (`external_pdf_to_md_converter_command`) is unset.
+
+A browser only solves the "page is a loading shell" class. When it returns a
+challenge/login page instead of content, say so rather than treating it as
+content.
+
 When no browser is configured, JS-heavy pages return their loading shell —
-say so instead of guessing, or use `ketch scrape --force-browser` after the
-operator has configured one. Static pages are always fetched via plain HTTP
-(fast path).
+report that instead of guessing, or use `ketch scrape --force-browser` after
+the operator has configured one.
+
+Note: for bare domains ketch automatically prefers `/llms.txt` when the site
+offers one (often better than rendering); disable with `--no-llms-txt`.
 
 ---
 
