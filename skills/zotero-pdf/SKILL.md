@@ -39,6 +39,12 @@ Opening the Zotero window afterwards attaches it to the running instance, so the
 headless process can be left alone. If you prefer the GUI, just run Zotero
 normally and set `ZOTERO_AUTOSTART` unset or `0`.
 
+**A running GUI is fine.** `start` (and `ZOTERO_AUTOSTART`) first probes the API:
+with the GUI up and the local API enabled it prints "already reachable" and does
+nothing. If a Zotero process exists but answers `403` (local API switched off), it
+refuses to launch a second instance and tells you to enable the setting — a
+second launch on the same profile would only open a window or die on the lock.
+
 Environment overrides: `ZOTERO_CMD` (default `zotero --headless`),
 `ZOTERO_LOG` (default `/tmp/zotero-headless.log`).
 

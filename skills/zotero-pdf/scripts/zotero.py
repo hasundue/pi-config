@@ -82,10 +82,31 @@ def pid_path() -> Path:
     return Path(runtime) / "zotero-pdf.pid"
 
 
+def _zotero_running() -> bool:
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            if "zotero" in (entry / "comm").read_text().strip().lower():
+                return True
+        except OSError:
+            continue
+    return False
+
+
 def cmd_start(args: argparse.Namespace) -> int:
-    if api_alive():
+    usable, detail = api_state()
+    if usable:
         print(f"Zotero API already reachable at {api_base()}")
         return 0
+    # A running Zotero that merely has the local API switched off must not be
+    # joined by a second instance: the profile is locked and the newcomer would
+    # either open a window or die.
+    if pids_on_port(api_port()) or _zotero_running():
+        die(
+            f"Zotero is already running but unusable: {detail}. Not starting a "
+            "second instance; fix the running one instead."
+        )
     command = shlex.split(os.environ.get("ZOTERO_CMD", "zotero --headless"))
     if not shutil.which(command[0]):
         die(f"cannot start Zotero: {command[0]} is not on PATH (set ZOTERO_CMD)")
