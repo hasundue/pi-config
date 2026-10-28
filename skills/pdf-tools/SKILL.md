@@ -13,13 +13,16 @@ Confirm the toolchain under Requirements first; if anything is missing, stop the
 Otherwise one script does the work: `scripts/pdf.py`. Start with `info` — it
 reports whether the file has a text layer or needs OCR, which decides the rest.
 
+Paths here are relative to this skill's directory — the directory the harness
+reports when it loads the skill (the one containing this `SKILL.md`). Never
+hardcode an absolute location; resolve against that directory.
+
 ```bash
-P=~/.pi/agent/skills/pdf-tools/scripts/pdf.py
-python3 "$P" info doc.pdf     # pages, metadata, text_layer, recommendation
+python3 <skill-dir>/scripts/pdf.py info doc.pdf   # pages, text_layer, recommendation
 ```
 
-Run `python3 "$P" <subcommand> --help` for flags. Page selections are 1-based:
-`--pages 3`, `--pages 1-5`, `--pages 10-`, `--pages 1-3,7`.
+Run `<skill-dir>/scripts/pdf.py <subcommand> --help` for flags. Page selections
+are 1-based: `--pages 3`, `--pages 1-5`, `--pages 10-`, `--pages 1-3,7`.
 
 ## Requirements
 
@@ -36,7 +39,7 @@ PDF work needs all of the following. None of it is optional.
 Check before starting anything:
 
 ```bash
-python3 ~/.pi/agent/skills/pdf-tools/scripts/verify-env.py
+python3 <skill-dir>/scripts/verify-env.py
 ```
 
 **If anything is missing, stop.** Do not substitute other tools, install

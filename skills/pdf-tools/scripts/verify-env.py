@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify that every PDF tool shipped through pi's extraPackages is callable.
+"""Verify that every PDF tool this skill needs is callable.
 
 Checks, in order:
   1. CLI binaries resolve on PATH and report a version
@@ -167,7 +167,7 @@ def main() -> int:
     print()
     if failures:
         print("RESULT: FAIL — not callable: " + ", ".join(failures))
-        print("Fix: add the missing package to extraPackages in dotnix/configs/home/pi.nix,")
+        print("Fix: install the missing package wherever this skill's environment is provided,")
         print("     rebuild (nix run .#home-build), switch (nix run .#home-switch), restart pi.")
         return 1
     print("RESULT: OK — all PDF tooling is callable.")
