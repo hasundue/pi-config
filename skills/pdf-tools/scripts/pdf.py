@@ -181,6 +181,95 @@ def body_zone(pdf: Path, page_index: int, columns: int) -> float | None:
         return min(body_like)
 
 
+def caption_lines(page) -> list[dict]:
+    """Text lines that look like figure or table captions (not prose mentions)."""
+    import re
+
+    # "FIG. 1." / "Figure 3:" / "TABLE II." — the trailing dot or colon is what
+    # separates a caption from a sentence such as "Figure 3 shows ...".
+    pattern = re.compile(
+        r"^\s*(FIG|FIGURE|TABLE|TAB)\.?\s*[0-9IVXivx]+\s*[.:]", re.IGNORECASE
+    )
+    return [line for line in page.extract_text_lines() if pattern.match(line["text"])]
+
+
+def ink_boxes(
+    page, x_lo: float, x_hi: float, *, graphics_only: bool = False
+) -> list[tuple[float, float, float, float]]:
+    """Bounding boxes of what is drawn (or written) inside an x range."""
+    groups = [page.images, page.curves, page.rects, page.lines]
+    if not graphics_only:
+        groups.append(page.chars)
+    boxes: list[tuple[float, float, float, float]] = []
+    for group in groups:
+        for obj in group:
+            if obj["x1"] <= x_lo or obj["x0"] >= x_hi:
+                continue
+            # ignore page-wide rules and hairlines, which are not artwork
+            if obj["x1"] - obj["x0"] > 0.8 * page.width:
+                continue
+            if (obj["bottom"] - obj["top"]) < 1.5 and (obj["x1"] - obj["x0"]) > 0.5 * page.width:
+                continue
+            boxes.append((obj["x0"], obj["top"], obj["x1"], obj["bottom"]))
+    return boxes
+
+
+def figure_region(
+    page, caption: dict, gap: float = 40.0
+) -> tuple[float, float, float, float]:
+    """Extent of the artwork that sits directly above a caption.
+
+    The vertical run is found by walking up from the caption through graphics;
+    the horizontal extent is widened to that same artwork, so a plot whose frame
+    or axis labels stick out past the caption text is not cut off.
+    """
+    art = ink_boxes(page, caption["x0"], caption["x1"], graphics_only=True)
+    above = [b for b in art if b[3] <= caption["top"]]
+    top = caption["top"]
+    for _, box_top, _, box_bottom in sorted(above, key=lambda b: b[3], reverse=True):
+        if top - box_bottom > gap:
+            break
+        top = min(top, box_top)
+
+    band = [b for b in art if b[3] > top and b[1] < caption["bottom"]]
+    x0 = min([caption["x0"], *(b[0] for b in band)])
+    x1 = max([caption["x1"], *(b[2] for b in band)])
+    return x0, top, x1, caption["bottom"]
+
+
+def render_region(
+    pdf: Path, page: int, region: tuple[float, float, float, float], out: Path, dpi: int
+) -> Path:
+    # pdftoppm's -x/-y/-W/-H are pixels of the rendered image, not PDF points, so
+    # a box in points has to be scaled by dpi/72.
+    x0, y0, x1, y1 = region
+    scale = dpi / 72.0
+    run(
+        [
+            "pdftoppm",
+            "-png",
+            "-r",
+            str(dpi),
+            "-f",
+            str(page),
+            "-l",
+            str(page),
+            "-x",
+            str(int(x0 * scale)),
+            "-y",
+            str(int(y0 * scale)),
+            "-W",
+            str(max(1, int((x1 - x0) * scale))),
+            "-H",
+            str(max(1, int((y1 - y0) * scale))),
+            str(pdf),
+            str(out),
+        ]
+    )
+    produced = sorted(out.parent.glob(f"{out.name}-*.png")) or [out.with_suffix(".png")]
+    return produced[0]
+
+
 def need(*binaries: str) -> None:
     missing = [b for b in binaries if shutil.which(b) is None]
     if missing:
@@ -361,12 +450,35 @@ def cmd_text(args: argparse.Namespace) -> int:
     return 0
 
 
+def parse_box(spec: str) -> tuple[float, float, float, float]:
+    """Parse 'x0,y0,x1,y1' in PDF points, measured from the page's top-left."""
+    try:
+        x0, y0, x1, y1 = (float(part) for part in spec.split(","))
+    except ValueError:
+        die("--crop expects x0,y0,x1,y1 in points (top-left origin)")
+    if x1 <= x0 or y1 <= y0:
+        die("--crop needs x1 > x0 and y1 > y0")
+    return x0, y0, x1, y1
+
+
 def cmd_pages(args: argparse.Namespace) -> int:
     need("pdftoppm")
     pdf = args.file
     pages = parse_pages(args.pages, page_count(pdf))
     out_dir = Path(args.out).expanduser()
     out_dir.mkdir(parents=True, exist_ok=True)
+    crop = parse_box(args.crop) if args.crop else None
+
+    if crop:
+        # pdftoppm's -x/-y are points from the top-left corner, same as pdfplumber
+        x0, y0, x1, y1 = crop
+        written: list[Path] = []
+        for number in pages:
+            target = out_dir / f"{pdf.stem}-p{number}-crop"
+            written.append(render_region(pdf, number, crop, target, args.dpi))
+        for path in written:
+            print(path)
+        return 0
     written: list[Path] = []
     for first, last in runs(pages):
         run(
@@ -392,6 +504,57 @@ def cmd_pages(args: argparse.Namespace) -> int:
         die("pdftoppm produced no images")
     for path in written:
         print(path)
+    return 0
+
+
+def cmd_figures(args: argparse.Namespace) -> int:
+    pdf = args.file
+    pages = parse_pages(args.pages, page_count(pdf))
+    need("pdftoppm") if args.out else None
+    out_dir = Path(args.out).expanduser() if args.out else None
+    if out_dir:
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+    import pdfplumber
+
+    found = 0
+    with pdfplumber.open(str(pdf)) as doc:
+        for number in pages:
+            if number > len(doc.pages):
+                break
+            page = doc.pages[number - 1]
+            for index, caption in enumerate(caption_lines(page), 1):
+                found += 1
+                x0, y0, x1, y1 = figure_region(page, caption)
+                x0, y0 = x0 - args.padding, y0 - args.padding
+                x1, y1 = x1 + args.padding, y1 + args.padding
+                if y1 - y0 < 20:
+                    continue
+                label = "region"
+                m = __import__("re").match(
+                    r"\s*(fig|figure|table|tab)\.?\s*([0-9IVXivx]+)", caption["text"],
+                    __import__("re").IGNORECASE,
+                )
+                if m:
+                    kind = "table" if m.group(1).lower().startswith("tab") else "fig"
+                    label = f"{kind}{m.group(2)}"
+                head = (
+                    f"page {number}  {label}  "
+                    f"x={x0:.0f},y={y0:.0f},w={x1 - x0:.0f},h={y1 - y0:.0f}"
+                )
+                if out_dir:
+                    target = out_dir / f"{pdf.stem}-p{number}-{label.lower()}"
+                    path = render_region(pdf, number, (x0, y0, x1, y1), target, args.dpi)
+                    print(f"{head}  -> {path}")
+                else:
+                    print(head)
+    if not found:
+        print(
+            "no figure or table captions found; render the page and crop by hand "
+            "with `pages --crop x0,y0,x1,y1`",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 
@@ -551,7 +714,20 @@ def main() -> int:
     p.add_argument("--out", required=True, help="output directory")
     p.add_argument("--dpi", type=int, default=150)
     p.add_argument("--format", choices=("png", "jpeg"), default="png")
+    p.add_argument(
+        "--crop",
+        metavar="X0,Y0,X1,Y1",
+        help="render only this box, in PDF points from the page's top-left corner",
+    )
     p.set_defaults(func=cmd_pages)
+
+    p = sub.add_parser("figures", help="locate (and optionally render) figures and tables")
+    add_file(p)
+    add_pages(p)
+    p.add_argument("--out", help="render each region here; omit to only list boxes")
+    p.add_argument("--dpi", type=int, default=150)
+    p.add_argument("--padding", type=float, default=4.0, help="points added around each region")
+    p.set_defaults(func=cmd_figures)
 
     p = sub.add_parser("tables", help="extract tables with pdfplumber")
     add_file(p)

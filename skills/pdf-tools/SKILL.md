@@ -56,6 +56,9 @@ needed it, then let the user decide.
 | Unsure of the layout | `pages --pages 1 --dpi 72` then `read` the PNG |
 | Words without layout padding | `text --mode raw` |
 | See a page: charts, scans, columns | `pages --out /tmp/doc --pages 3` then `read` the PNG |
+| A figure or table only | `figures --pages 4 --out /tmp/figs` then `read` each PNG |
+| A specific region (equation, panel) | `pages --out /tmp/one --pages 2 --crop 40,330,300,400 --dpi 200` |
+| Math worth trusting | LaTeX source for arXiv papers, else crop and read |
 | Table cells, borderless (papers, reports) | `tables --strategy text --format md` |
 | Table cells, ruled (forms) | `tables --format md` (default `lines` strategy) |
 | Scanned page to text | `ocr --pages 3 --lang eng` |
@@ -100,6 +103,27 @@ needed it, then let the user decide.
   interpreted by `ocr`; render with `pages` and look at it.
 - **Cost of rendering.** Every page image is a separate attachment. Select pages
   and use `--dpi 150` for reading; reserve `--dpi 300` for OCR.
+- **Equations do not survive text extraction.** Measured on a physics paper:
+  `ε` vanished entirely, `∫` became `Z`, `∑` became `X`, `√` became `p`, and
+  fractions collapsed into stacked lines. Simple symbols (`δ`, `ı`, `∞`, `≥`)
+  do survive, which makes the damage easy to miss. For any result that depends
+  on a formula, get LaTeX instead:
+
+  ```bash
+  curl -sL -o /tmp/src.tar.gz https://arxiv.org/e-print/<arxiv-id>
+  mkdir -p /tmp/src && tar -xzf /tmp/src.tar.gz -C /tmp/src   # main.tex
+  ```
+
+  Otherwise crop the equation and read it as an image; never reconstruct a
+  formula from extracted text alone.
+- **`figures` assumes artwork above the caption.** It finds lines matching
+  `FIG. 1.` / `Figure 3:` / `TABLE II.` (prose like "Figure 3 shows" is ignored),
+  walks up through vector artwork, and widens the box to that artwork. Vector
+  plots work; a caption placed above its figure, or a figure with no caption,
+  needs `pages --crop` by hand.
+- **`--crop` takes PDF points from the top-left corner.** To convert from a page
+  you already rendered at `--dpi D`: `point = pixel * 72 / D`. Crop boxes are
+  scaled internally, so the same numbers work at any dpi.
 - **Language data.** Only `eng` is available for `ocr`. If another language is
   required, stop and report it instead of OCRing with the wrong model.
 - **No usable text layer?** `info` reports `recommendation: ocr`; `text` exits
