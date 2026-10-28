@@ -52,7 +52,7 @@ needed it, then let the user decide.
 | --- | --- |
 | Is this a scan or a text PDF? | `info` (add `--json` for scripts) |
 | Text of the file or a page range | `text --pages 1-5` |
-| Two-column paper, correct reading order | `text --columns 2 --pages 2-` |
+| Two-column paper, correct reading order | `text --columns auto --pages 2-` |
 | Words without layout padding | `text --mode raw` |
 | See a page: charts, scans, columns | `pages --out /tmp/doc --pages 3` then `read` the PNG |
 | Table cells, borderless (papers, reports) | `tables --strategy text --format md` |
@@ -67,11 +67,16 @@ needed it, then let the user decide.
   bytes come back as text (measured: a raw `%PDF-1.4` dump). Render first with
   `pages`, or use `text`/`tables`.
 - **Two-column layouts interleave.** A plain `text` run reads across both
-  columns line by line, mixing them. `text --columns 2` splits each page into
-  vertical strips and emits left then right, and word spacing survives because
-  the split happens inside `pdftotext`. Page 1 usually carries a full-width
-  title and abstract, so start at `--pages 2-`; never pass `--columns` for a
-  single-column document — it discards most of the text.
+  columns line by line, mixing them. `info` reports the detected `columns`, and
+  `text` warns when the layout looks multi-column; `--columns auto` applies the
+  detection, while `--columns 2` forces it. The split happens inside `pdftotext`,
+  so word spacing survives. Page 1 usually carries a full-width title and
+  abstract, so start at `--pages 2-`.
+- **Detection is geometric.** Side-by-side layouts that are not prose — forms,
+  two-up slides, checklists — also register as 2 columns, and splitting them is
+  sometimes not what you want. Judge from the output: if the text stops making
+  sense, retry with `--columns 1`. Never pass `--columns` for a plain
+  single-column document, where it discards most of the text.
 - **ketch vs local extraction.** For a PDF behind a URL, `ketch scrape <url>` is
   the cheapest first look (no OCR), but its extractor drops inter-word spacing —
   text comes out jammed. When the wording matters, download the file and use

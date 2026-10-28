@@ -92,6 +92,38 @@ def page_sizes(pdf: Path) -> list[tuple[float, float]]:
     return sizes
 
 
+def detect_columns(pdf: Path, probe: int = 3) -> int:
+    """Guess the number of text columns from word bounding boxes.
+
+    Page 1 is skipped when possible: titles and abstracts often span the full
+    width and would hide a two-column body. A layout only counts as N columns
+    when almost no word crosses a strip boundary and every strip holds words.
+    """
+    import pdfplumber
+
+    with pdfplumber.open(str(pdf)) as doc:
+        pages = doc.pages[1 : 1 + probe] if len(doc.pages) > 1 else doc.pages[:1]
+        for page in pages:
+            words = page.extract_words()
+            if len(words) < 40:
+                continue
+            width = page.width
+            for columns in (3, 2):
+                bounds = [width * i / columns for i in range(1, columns)]
+                crossing = sum(
+                    1 for word in words if any(word["x0"] < b < word["x1"] for b in bounds)
+                )
+                if crossing / len(words) > 0.02:
+                    continue
+                occupied = [0] * columns
+                for word in words:
+                    strip = min(int(word["x0"] / (width / columns)), columns - 1)
+                    occupied[strip] += 1
+                if all(count >= len(words) * 0.05 for count in occupied):
+                    return columns
+    return 1
+
+
 def need(*binaries: str) -> None:
     missing = [b for b in binaries if shutil.which(b) is None]
     if missing:
@@ -128,6 +160,7 @@ def cmd_info(args: argparse.Namespace) -> int:
         "file": str(pdf),
         "pages": total,
         "text_layer": text_layer,
+        "columns": detect_columns(pdf),
         "chars_on_first_pages": chars_per_page,
         "recommendation": "text" if text_layer else "ocr",
     }
@@ -147,6 +180,11 @@ def cmd_info(args: argparse.Namespace) -> int:
             print(f"{key:<22} {value}")
         if not text_layer:
             print("\nNo usable text layer: use `ocr` (text extraction would return little).")
+        elif info["columns"] != 1:
+            print(
+                f"\nThis looks like {info['columns']} columns: use `text --columns "
+                f"{info['columns']}` (start at --pages 2- if page 1 has a wide title)."
+            )
     return 0
 
 
@@ -154,16 +192,25 @@ def cmd_text(args: argparse.Namespace) -> int:
     need("pdftotext")
     pdf = args.file
     pages = parse_pages(args.pages, page_count(pdf))
+    columns = detect_columns(pdf) if args.columns == "auto" else int(args.columns)
+    if columns == 1 and args.columns == "1":
+        guessed = detect_columns(pdf)
+        if guessed > 1:
+            print(
+                f"note: the layout looks like {guessed} columns, so this output "
+                f"mixes them; use `--columns {guessed}` (or `--columns auto`)",
+                file=sys.stderr,
+            )
     chunks: list[str] = []
 
-    if args.columns > 1:
+    if columns > 1:
         # Split each page into vertical strips and read them left to right, so a
         # two-column layout keeps its reading order instead of interleaving.
         sizes = page_sizes(pdf)
         for number in pages:
             width, height = sizes[number - 1]
-            strip = width / args.columns
-            for column in range(args.columns):
+            strip = width / columns
+            for column in range(columns):
                 proc = run(
                     [
                         "pdftotext",
@@ -215,7 +262,7 @@ def cmd_text(args: argparse.Namespace) -> int:
     if not text.strip():
         die("pdftotext produced no text; the pages are probably scanned (use `ocr`)")
     if len(text.strip()) < 40:
-        if args.columns > 1:
+        if columns > 1:
             print(
                 "note: very little text came out; the column split may be wrong "
                 "(retry without --columns), or the pages are scanned (use `ocr`)",
@@ -407,12 +454,11 @@ def main() -> int:
     p.add_argument("--max-chars", type=int, help="truncate output")
     p.add_argument(
         "--columns",
-        type=int,
-        default=1,
-        metavar="N",
-        help="split each page into N vertical strips, read left to right (use 2 for "
-        "two-column papers; titles on page 1 usually span the full width, so start "
-        "from page 2)",
+        default="1",
+        metavar="N|auto",
+        help="split each page into N vertical strips, read left to right; `auto` "
+        "uses the column count reported by `info` (needed for two-column papers; "
+        "titles on page 1 usually span the full width, so start from page 2)",
     )
     p.set_defaults(func=cmd_text)
 
@@ -446,8 +492,9 @@ def main() -> int:
     args = parser.parse_args()
     if not args.file.is_file():
         die(f"no such file: {args.file}")
-    if getattr(args, "columns", 1) < 1:
-        die("--columns must be 1 or more")
+    columns = getattr(args, "columns", "1")
+    if columns != "auto" and (not columns.isdigit() or int(columns) < 1):
+        die("--columns takes a positive integer or `auto`")
     return args.func(args)
 
 
