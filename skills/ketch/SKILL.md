@@ -328,8 +328,13 @@ runs when a JS shell is detected (or `--force-browser`).
   a browser alone shows the login page.
 - **Interaction-only content**: infinite scroll, tab/accordion clicks, form
   input — a single page load never performs them.
-- **Non-HTML**: PDFs extract only a text layer (a minimal PDF returned 3 words)
-  and the external converter (`external_pdf_to_md_converter_command`) is unset.
+- **PDFs**: with a text layer they are read natively (an arXiv paper came back
+  fully extracted) — but layout reconstruction is naive, so words/columns jam
+  together; grep the output rather than reading it verbatim. **Scanned /
+  image-only PDFs return garbage** (measured: 6 tokens of noise, no error) —
+  those need an OCR-capable `external_pdf_to_md_converter_command`, which is
+  unset here (persist any change in dotnix's ketch generator — `config set`
+  won't survive a login).
 
 A browser only solves the "page is a loading shell" class. When it returns a
 challenge/login page instead of content, say so rather than treating it as
