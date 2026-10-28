@@ -53,6 +53,7 @@ needed it, then let the user decide.
 | Is this a scan or a text PDF? | `info` (add `--json` for scripts) |
 | Text of the file or a page range | `text --pages 1-5` |
 | Two-column paper, correct reading order | `text --columns auto --pages 2-` |
+| Unsure of the layout | `pages --pages 1 --dpi 72` then `read` the PNG |
 | Words without layout padding | `text --mode raw` |
 | See a page: charts, scans, columns | `pages --out /tmp/doc --pages 3` then `read` the PNG |
 | Table cells, borderless (papers, reports) | `tables --strategy text --format md` |
@@ -77,6 +78,17 @@ needed it, then let the user decide.
   sometimes not what you want. Judge from the output: if the text stops making
   sense, retry with `--columns 1`. Never pass `--columns` for a plain
   single-column document, where it discards most of the text.
+- **When the layout is unclear, look at it.** Rendered pages are the authority,
+  and 72 dpi is enough to see columns, gutters, tables, and where a full-width
+  head ends:
+
+  ```bash
+  python3 <skill-dir>/scripts/pdf.py pages FILE --out /tmp/look --pages 1 --dpi 72
+  ```
+
+  then `read` the PNG. Do this when `info` and the text disagree, when a page is
+  a form or slide rather than prose, or when a split cuts a title or swallows a
+  paragraph; then pass `--columns N` explicitly.
 - **ketch vs local extraction.** For a PDF behind a URL, `ketch scrape <url>` is
   the cheapest first look (no OCR), but its extractor drops inter-word spacing —
   text comes out jammed. When the wording matters, download the file and use

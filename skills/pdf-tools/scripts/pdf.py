@@ -124,6 +124,63 @@ def detect_columns(pdf: Path, probe: int = 3) -> int:
     return 1
 
 
+def body_zone(pdf: Path, page_index: int, columns: int) -> float | None:
+    """Return the y (from the page top) where the column region starts.
+
+    Page 1 usually opens with a full-width title and abstract and only then drops
+    into columns. Lines above the first column-width line are treated as full
+    width; everything below is read strip by strip. Returns None when the page
+    holds no column-width text (then the whole page is read full width, which
+    also protects single-column pages from a mistaken --columns).
+    """
+    import pdfplumber
+
+    with pdfplumber.open(str(pdf)) as doc:
+        if page_index > len(doc.pages):
+            return None
+        page = doc.pages[page_index - 1]
+        words = page.extract_words()
+        if not words:
+            return None
+        width = page.width
+        mid = width / 2
+        buckets: dict[float, dict[str, list[dict]]] = {}
+        for word in words:
+            if word["x1"] <= mid + 1:
+                side = "left"
+            elif word["x0"] >= mid - 1:
+                side = "right"
+            else:
+                side = "span"  # a word crossing the gutter
+            slot = buckets.setdefault(round(word["top"] / 3), {"left": [], "right": [], "span": []})
+            slot[side].append(word)
+
+        body_like: list[float] = []
+        for slot in buckets.values():
+            if slot["span"]:
+                continue  # a word crossing the gutter means one full-width line
+            left, right = slot["left"], slot["right"]
+            if left and right:
+                gutter = min(w["x0"] for w in right) - max(w["x1"] for w in left)
+                if gutter <= 0.03 * width:
+                    continue  # continuous across the middle: a full-width line
+                sides = [left, right]
+            else:
+                sides = [left or right]
+            for group in sides:
+                span = max(w["x1"] for w in group) - min(w["x0"] for w in group)
+                if 0.10 * width < span < 0.55 * width:
+                    body_like.append(min(w["top"] for w in group))
+        if columns == 2:
+            left = sum(1 for w in words if w["x1"] <= mid + 1)
+            right = sum(1 for w in words if w["x0"] >= mid - 1)
+            if left < 20 or right < 20 or not body_like:
+                return None
+        if not body_like:
+            return None
+        return min(body_like)
+
+
 def need(*binaries: str) -> None:
     missing = [b for b in binaries if shutil.which(b) is None]
     if missing:
@@ -185,6 +242,11 @@ def cmd_info(args: argparse.Namespace) -> int:
                 f"\nThis looks like {info['columns']} columns: use `text --columns "
                 f"{info['columns']}` (start at --pages 2- if page 1 has a wide title)."
             )
+        if text_layer:
+            print(
+                "\nUnsure about the layout? render and look: "
+                f"`pages {pdf} --out /tmp/look --pages 1 --dpi 72`"
+            )
     return 0
 
 
@@ -205,16 +267,24 @@ def cmd_text(args: argparse.Namespace) -> int:
 
     if columns > 1:
         # Split each page into vertical strips and read them left to right, so a
-        # two-column layout keeps its reading order instead of interleaving.
+        # two-column layout keeps its reading order. Full-width text above the
+        # first column line (page 1's title and abstract) is read whole first.
         sizes = page_sizes(pdf)
         for number in pages:
             width, height = sizes[number - 1]
-            strip = width / columns
-            for column in range(columns):
-                proc = run(
+            start = body_zone(pdf, number, columns)
+            if start is not None and start < 0.15 * height:
+                # the columns start right at the top: no full-width head to carve
+                # out (otherwise a few continuation lines get read interleaved)
+                start = 0
+
+            def crop(
+                x: float, y: float, w: float, h: float, mode: str = args.mode
+            ) -> str:
+                return run(
                     [
                         "pdftotext",
-                        f"-{args.mode}",
+                        f"-{mode}",
                         "-enc",
                         "UTF-8",
                         "-f",
@@ -222,18 +292,31 @@ def cmd_text(args: argparse.Namespace) -> int:
                         "-l",
                         str(number),
                         "-x",
-                        str(int(strip * column)),
+                        str(int(x)),
                         "-y",
-                        "0",
+                        str(int(y)),
                         "-W",
-                        str(int(strip)),
+                        str(int(w)),
                         "-H",
-                        str(int(height)),
+                        str(int(h)),
                         str(pdf),
                         "-",
                     ]
-                )
-                body = proc.stdout.strip()
+                ).stdout.strip()
+
+            if start is None:
+                # no column-width text: read full width rather than lose it
+                body = crop(0, 0, width, height)
+                if body:
+                    chunks.append(f"--- page {number} ---\n{body}")
+                continue
+            if start > 20:
+                head = crop(0, 0, width, start)
+                if head:
+                    chunks.append(f"--- page {number}, full width ---\n{head}")
+            strip = width / columns
+            for column in range(columns):
+                body = crop(strip * column, start, strip, height - start)
                 if body:
                     chunks.append(f"--- page {number}, column {column + 1} ---\n{body}")
         text = "\n\n".join(chunks)
