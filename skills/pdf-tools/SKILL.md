@@ -1,121 +1,82 @@
 ---
 name: pdf-tools
 description: >
-  Read the contents of PDF files: extract text and tables, render pages to
-  images for visual inspection of figures, and OCR scanned (image-only) PDFs.
-  Use when a task needs a local PDF, when ketch's built-in extraction returns
-  garbage or empty output (scanned pages), or when a chart, diagram, or table
-  layout must actually be seen rather than guessed from captions.
+  Read PDFs on this machine: extract text, render pages to images for visual
+  inspection, pull table cells, and OCR scanned documents. Use when a task
+  involves a local PDF, when text extracted from a PDF looks empty or mangled,
+  or when figures and table layout must actually be seen rather than guessed.
 ---
 
 # PDF Tools
 
-Tooling for reading PDFs comes from Nix (`dotnix/configs/home/pi.nix`,
-`programs.pi-coding-agent.extraPackages`), so it is on `PATH` for this agent and
-its `bash` tool — nothing needs installing at runtime.
-
-## Verify the environment first
+One script does the work: `scripts/pdf.py`. Start with `info` — it reports whether
+the file has a text layer or needs OCR, which decides everything else.
 
 ```bash
-python3 ~/.pi/agent/skills/pdf-tools/scripts/verify-env.py
-python3 …/verify-env.py --no-smoke      # binaries + imports only
-python3 …/verify-env.py --pdf doc.pdf   # smoke test a real PDF
+P=~/.pi/agent/skills/pdf-tools/scripts/pdf.py
+python3 "$P" info doc.pdf     # pages, metadata, text_layer, recommendation
 ```
 
-The script checks every binary and Python import, runs an end-to-end smoke test
-(PDF → PNG → OCR) in a temp dir, and exits non-zero listing what is missing.
-Run it once per session before trusting the rest of this skill.
+Run `python3 "$P" <subcommand> --help` for flags. Page selections are 1-based:
+`--pages 3`, `--pages 1-5`, `--pages 10-`, `--pages 1-3,7`.
 
-Only three binaries and two pure-Python libraries are installed.
-`pdf2image` and `pytesseract` are deliberately absent: they merely shell out to
-`pdftoppm` and `tesseract`, so call those directly.
+## Route by need
 
-## Route by input, not by habit
-
-| Situation | Do this |
+| Need | Command |
 | --- | --- |
-| PDF behind a URL, text layer intact | `ketch scrape <url>` — built-in extraction, no OCR, cheapest |
-| Local PDF, text layer intact | `pdftotext -layout doc.pdf -` (or `pdfplumber` for tables) |
-| **Scanned** PDF (image-only), or ketch returns 6 tokens of noise | **OCR**: `tesseract` / `pytesseract` (see below) |
-| Figures, charts, multi-column layout matter | `pdftoppm` → PNG → `read` each page image (vision) |
-| Tables | `pdfplumber` `extract_tables()` — keeps rows/columns that text extraction destroys |
-| Split / merge / rotate / overlay / decrypt | `qpdf` (or `pdfunite` / `pdfseparate`) |
+| Is this a scan or a text PDF? | `info` (add `--json` for scripts) |
+| Text of the file or a page range | `text --pages 1-5` |
+| Words without layout padding | `text --mode raw` |
+| See a page: charts, scans, columns | `pages --out /tmp/doc --pages 3` then `read` the PNG |
+| Table cells, borderless (papers, reports) | `tables --strategy text --format md` |
+| Table cells, ruled (forms) | `tables --format md` (default `lines` strategy) |
+| Scanned page to text | `ocr --pages 3 --lang eng` |
+| Toolchain health check | `python3 scripts/verify-env.py` |
 
-## Commands
+`text` and `tables` write to stdout; `pages` writes files and prints their paths.
 
-Text and metadata:
+## Gotchas
 
-```bash
-pdfinfo doc.pdf
-pdftotext -layout doc.pdf -            # layout preserved, best for prose
-pdftotext -f 3 -l 5 doc.pdf -          # page range only
-```
-
-Pages to images (for `read` / vision). Render only the pages you need — every
-page image is a separate attachment and costs context:
-
-```bash
-pdftoppm -png -r 150 -f 1 -l 4 doc.pdf /tmp/doc   # -> /tmp/doc-1.png ...
-```
-
-Tables:
-
-```bash
-python3 - <<'PY'
-import pdfplumber
-with pdfplumber.open("doc.pdf") as pdf:
-    for i, page in enumerate(pdf.pages, 1):
-        for table in page.extract_tables():
-            print(f"--- page {i} ---")
-            for row in table:
-                print(" | ".join(c or "" for c in row))
-PY
-```
-
-OCR a scanned PDF (render, then recognize; 200–300 dpi is the useful range):
-
-```bash
-pdftoppm -png -r 300 doc.pdf /tmp/scan
-for p in /tmp/scan-*.png; do tesseract "$p" - -l eng 2>/dev/null; done
-```
+- **Never hand a PDF to the `read` tool.** It is not an image type there, so the
+  bytes come back as text (measured: a raw `%PDF-1.4` dump). Render first with
+  `pages`, or use `text`/`tables`.
+- **ketch vs local extraction.** For a PDF behind a URL, `ketch scrape <url>` is
+  the cheapest first look (no OCR), but its extractor drops inter-word spacing —
+  text comes out jammed. When the wording matters, download the file and use
+  `pdf.py text`, which keeps spacing via `pdftotext -layout`.
+- **`lines` vs `text` table strategy.** `lines` needs drawn rules and returns
+  nothing on academic papers; `text` infers columns from whitespace, works on
+  papers and reports, but collapses spaces inside cells.
+- **OCR reads characters, not meaning.** A chart, diagram, or photograph is not
+  interpreted by `ocr`; render with `pages` and look at it.
+- **Cost of rendering.** Every page image is a separate attachment. Select pages
+  and use `--dpi 150` for reading; reserve `--dpi 300` for OCR.
+- **Language data.** `ocr --lang eng` is all that ships here. Other languages
+  need the matching tesseract data added to `extraPackages`.
+- **No usable text layer?** `info` reports `recommendation: ocr`; `text` exits
+  with a hint instead of returning a near-empty blob.
 
 ## Environment
 
-Installed via `extraPackages` in `dotnix/configs/home/pi.nix`:
+Installed through `programs.pi-coding-agent.extraPackages` in
+`dotnix/configs/home/pi.nix`, so it is on `PATH` for this agent and its `bash`
+tool — nothing to install at runtime. After changing that file, rebuild
+(`nix run .#home-build`), switch (`nix run .#home-switch`), and restart pi.
 
 | Kind | Package | Gives you |
 | --- | --- | --- |
 | CLI | `poppler-utils` | `pdftoppm`, `pdftotext`, `pdfinfo`, `pdfimages`, `pdfunite`, `pdfseparate`, `pdftohtml` |
 | CLI | `tesseract` | OCR, with `tsv` / `hocr` output for word coordinates |
 | CLI | `qpdf` | split, merge, rotate, encrypt/decrypt, overlay, structural check |
-| Python | `pypdf` | pure Python merge/split/rotate/encrypt, page assembly |
-| Python | `pdfplumber` | pure Python table extraction and coordinate-filtered text |
+| Python | `pypdf` | pure Python page assembly, merge/split, encryption |
+| Python | `pdfplumber` | pure Python tables and coordinate-filtered text |
 
-Both Python packages are pure Python (pdfplumber runs on `pdfminer.six`), so they
-add no extra executables. There is no `pymupdf`, so rendering always goes through
+`pdf2image` and `pytesseract` are deliberately absent: both merely shell out to
+the binaries above. There is no `pymupdf`, so rendering always goes through
 `pdftoppm`.
 
-## Rules
+## Extending
 
-- **Never pass a PDF to the `read` tool** — it is not an image type there and
-  the bytes get treated as text (measured: raw `%PDF-1.4` dump). Render to PNG
-  first, or extract text.
-- **OCR reads characters, not meaning.** It will not interpret a chart, a
-  diagram, or a photograph; only rendering the page and looking at it will.
-- Text extraction into a single blob loses column order — if word spacing comes
-  out jammed ("Providedproperattribution"), grep for the tokens you need
-  instead of reading it linearly, or render the page instead.
-- ketch's built-in PDF path has no OCR and wins on speed; use it first for URL
-  PDFs and fall back here on empty/garbage output.
-
-## Skeleton
-
-```
-pdf-tools/
-├── SKILL.md
-└── scripts/
-    └── verify-env.py    # binaries + imports + end-to-end smoke test
-```
-
-Add task-specific scripts under `scripts/` as the need appears; keep them
-non-interactive, write outputs to a temp dir, and print what they produced.
+Add subcommands to `scripts/pdf.py` rather than new scripts: keep stdout
+deterministic, write files only when asked, and print what was written. `info`
+should stay the entry point that decides text vs OCR.
