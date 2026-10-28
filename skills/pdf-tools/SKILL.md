@@ -26,6 +26,10 @@ The script checks every binary and Python import, runs an end-to-end smoke test
 (PDF → PNG → OCR) in a temp dir, and exits non-zero listing what is missing.
 Run it once per session before trusting the rest of this skill.
 
+Only three binaries and two pure-Python libraries are installed.
+`pdf2image` and `pytesseract` are deliberately absent: they merely shell out to
+`pdftoppm` and `tesseract`, so call those directly.
+
 ## Route by input, not by habit
 
 | Situation | Do this |
@@ -35,7 +39,7 @@ Run it once per session before trusting the rest of this skill.
 | **Scanned** PDF (image-only), or ketch returns 6 tokens of noise | **OCR**: `tesseract` / `pytesseract` (see below) |
 | Figures, charts, multi-column layout matter | `pdftoppm` → PNG → `read` each page image (vision) |
 | Tables | `pdfplumber` `extract_tables()` — keeps rows/columns that text extraction destroys |
-| Split / merge / rotate / decrypt | `qpdf` |
+| Split / merge / rotate / overlay / decrypt | `qpdf` (or `pdfunite` / `pdfseparate`) |
 
 ## Commands
 
@@ -74,6 +78,22 @@ OCR a scanned PDF (render, then recognize; 200–300 dpi is the useful range):
 pdftoppm -png -r 300 doc.pdf /tmp/scan
 for p in /tmp/scan-*.png; do tesseract "$p" - -l eng 2>/dev/null; done
 ```
+
+## Environment
+
+Installed via `extraPackages` in `dotnix/configs/home/pi.nix`:
+
+| Kind | Package | Gives you |
+| --- | --- | --- |
+| CLI | `poppler-utils` | `pdftoppm`, `pdftotext`, `pdfinfo`, `pdfimages`, `pdfunite`, `pdfseparate`, `pdftohtml` |
+| CLI | `tesseract` | OCR, with `tsv` / `hocr` output for word coordinates |
+| CLI | `qpdf` | split, merge, rotate, encrypt/decrypt, overlay, structural check |
+| Python | `pypdf` | pure Python merge/split/rotate/encrypt, page assembly |
+| Python | `pdfplumber` | pure Python table extraction and coordinate-filtered text |
+
+Both Python packages are pure Python (pdfplumber runs on `pdfminer.six`), so they
+add no extra executables. There is no `pymupdf`, so rendering always goes through
+`pdftoppm`.
 
 ## Rules
 

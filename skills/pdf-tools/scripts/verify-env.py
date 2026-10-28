@@ -4,7 +4,10 @@
 Checks, in order:
   1. CLI binaries resolve on PATH and report a version
   2. Python modules import and report a version
-  3. End-to-end smoke test: PDF -> PNG (pdf2image/poppler) -> OCR (tesseract)
+  3. End-to-end smoke test: PDF -> PNG (pdftoppm) -> OCR (tesseract)
+
+Only the binaries below are expected; pdf2image and pytesseract are deliberately
+absent because they are thin wrappers around these same executables.
 
 Usage:
     python3 verify-env.py            # full check
@@ -25,24 +28,22 @@ import sys
 import tempfile
 from pathlib import Path
 
+# binary -> flag that prints its version
 BINARIES = {
     "pdftoppm": "-v",  # poppler tools take -v, not --version
     "pdftotext": "-v",
     "pdfinfo": "-v",
-    "qpdf": "--version",
     "tesseract": "--version",
+    "qpdf": "--version",
 }
 
 # import name -> distribution name (for version lookup)
 MODULES = {
     "pypdf": "pypdf",
     "pdfplumber": "pdfplumber",
-    "pdf2image": "pdf2image",
-    "pytesseract": "pytesseract",
-    "PIL": "pillow",
 }
 
-WIDTH = 16
+WIDTH = 14
 failures: list[str] = []
 
 
@@ -55,6 +56,13 @@ def problem(label: str, detail: str) -> None:
     row(label, f"FAIL  {detail}")
 
 
+def first_line(text: str) -> str:
+    for line in text.splitlines():
+        if line.strip():
+            return line.strip()
+    return ""
+
+
 def check_binaries() -> None:
     print("== binaries ==")
     for name, flag in BINARIES.items():
@@ -64,18 +72,13 @@ def check_binaries() -> None:
             continue
         try:
             proc = subprocess.run(
-                [name, flag],
-                capture_output=True,
-                text=True,
-                timeout=30,
-                check=False,
+                [name, flag], capture_output=True, text=True, timeout=30, check=False
             )
         except (OSError, subprocess.SubprocessError) as exc:
             problem(name, f"{path} (version check failed: {exc})")
             continue
-        # banners go to stdout for most tools, to stderr for poppler on some builds
-        lines = [ln.strip() for ln in (proc.stdout + proc.stderr).splitlines() if ln.strip()]
-        version = lines[0] if lines else "?"
+        # poppler prints its banner on stderr, tesseract/qpdf on stdout
+        version = first_line(proc.stdout + proc.stderr) or "?"
         row(name, f"{path}  [{version}]")
 
 
@@ -106,29 +109,36 @@ def check_end_to_end(pdf: Path, generated: bool) -> None:
     print(f"== end-to-end (PDF -> PNG -> OCR): {pdf.name} ==")
     if generated:
         row("pypdf", f"wrote {pdf.name} ({pdf.stat().st_size} bytes)")
-    from pdf2image import convert_from_path
 
-    pages = convert_from_path(str(pdf), dpi=150)
-    if not pages:
-        problem("pdf2image", "rendered no pages")
+    prefix = pdf.with_name("page")
+    proc = subprocess.run(
+        ["pdftoppm", "-png", "-r", "150", "-f", "1", "-l", "1", str(pdf), str(prefix)],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    if proc.returncode != 0:
+        problem("pdftoppm", first_line(proc.stderr) or f"exit {proc.returncode}")
         return
-    first = pages[0]
-    out = pdf.with_name("page-1.png")
-    first.save(out)
-    row("pdf2image", f"{len(pages)} page(s) -> {out.name} {first.size}")
+    images = sorted(pdf.parent.glob("page*.png"))
+    if not images:
+        problem("pdftoppm", "produced no image")
+        return
+    row("pdftoppm", f"{images[0].name} ({images[0].stat().st_size} bytes)")
 
     result = subprocess.run(
-        ["tesseract", str(out), "-"],
+        ["tesseract", str(images[0]), "-"],
         capture_output=True,
         text=True,
         timeout=120,
         check=False,
     )
     if result.returncode != 0:
-        problem("tesseract", result.stderr.strip().splitlines()[-1:] or "failed")
+        problem("tesseract", first_line(result.stderr) or f"exit {result.returncode}")
         return
-    rows = len([line for line in result.stdout.splitlines() if line.strip()])
-    row("tesseract", f"OCR ok ({rows} text line(s))")
+    lines = [line for line in result.stdout.splitlines() if line.strip()]
+    row("tesseract", f"OCR ok ({len(lines)} text line(s))")
 
 
 def main() -> int:
@@ -142,16 +152,15 @@ def main() -> int:
 
     if not args.no_smoke:
         with tempfile.TemporaryDirectory(prefix="pdf-tools-") as tmp:
-            if args.pdf:
+            generated = args.pdf is None
+            if generated:
+                source: Path | None = Path(tmp) / "blank.pdf"
+                make_blank_pdf(source)
+            else:
                 source = args.pdf.expanduser().resolve()
-                generated = False
                 if not source.is_file():
                     problem("--pdf", f"{source} not found")
                     source = None
-            else:
-                source = Path(tmp) / "blank.pdf"
-                generated = True
-                make_blank_pdf(source)
             if source is not None:
                 check_end_to_end(source, generated)
 
