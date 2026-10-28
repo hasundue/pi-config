@@ -67,8 +67,8 @@ ketch search "query" --limit 10
 Select a specific search backend (the default is configured by the operator):
 
 ```bash
-ketch search "query" --backend ddg
-ketch search "query" --backend exa
+ketch search "query" --backend exa       # verified working keyless
+ketch search "query" --backend parallel
 # Backends: auto, brave (default), ddg, searxng, exa, firecrawl, keenable,
 #           tavily, parallel, serpbase, degoog, serply, youcom
 # Which are usable right now: ketch doctor
@@ -79,7 +79,7 @@ with fallback. Both are mutually exclusive with `--backend`:
 
 ```bash
 ketch search "query" --multi=brave,exa      # or --multi for every usable backend
-ketch search "query" --random=ddg,searxng
+ketch search "query" --random=exa,parallel,keenable   # survives one provider failing
 ```
 
 Compact output for agent parsing:
@@ -91,10 +91,14 @@ ketch search "query" --max-chars 4000   # truncate scraped markdown
 ```
 
 > **Rate limits — do not call in parallel.** The default `brave` backend is
-> rate-limited (~1 request/second plus a monthly quota), and `ddg` is currently
-> rate-limited too. **Never issue multiple `ketch search` calls concurrently** —
-> run them sequentially or space them out. If you get a `brave: rate limited`
-> (HTTP 429) error, wait a moment and retry, or fall back with `--backend ddg`.
+> rate-limited (~1 request/second plus a monthly quota). **Never issue multiple
+> `ketch search` calls concurrently** — run them sequentially or space them out.
+> If you get a `brave: rate limited` (HTTP 429) error, wait a moment and retry;
+> if it persists, switch backend — verified working keyless: `exa`, `keenable`,
+> `parallel`, `youcom` (e.g. `--backend exa`), or use `--random=exa,parallel` for
+> automatic fallback. **Currently broken fallbacks:** `ddg` fails with
+> "rate limited after retries", `firecrawl` keyless 403s (VPN/proxy IP),
+> `searxng` needs a running instance at `searxng_url`. Health check: `ketch doctor`.
 
 ---
 
@@ -132,7 +136,10 @@ ketch scrape https://example.com --force-browser  # always render via the browse
 ```
 
 If a site blocks the default fetch, `--user-agent <ua>` and
-`--cookie-file <cookies.txt>` override the configured values per call.
+`--cookie-file <cookies.txt>` override the configured values per call. Some
+sites hard-fail regardless (e.g. Medium returns HTTP 403) — report it and fall
+back to the search snippet instead of retrying; JS shells need a browser (see
+below).
 
 ---
 
@@ -375,10 +382,11 @@ per-backend `*_api_key_set` flags):
 | Backend                    | Setup                   | Notes                                                                                                                          |
 | -------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `auto`                     | —                       | Let ketch pick the first usable backend                                                                                        |
-| `brave`                    | Free API key            | Default. Rate-limited (~1 req/s + monthly quota) — avoid parallel calls; on 429 retry or fall back to `ddg`.                    |
-| `ddg`                      | Zero config             | Rate-limited by DDG currently — the simplest fallback                                                                          |
-| `searxng`                  | Self-hosted instance    | Must be running at `searxng_url` (see `ketch doctor` if unreachable)                                                           |
-| `exa`, `firecrawl`, `keenable`, `parallel`, `youcom` | API key / service | Usable alternates; keyless tiers may be capped (`ketch doctor`)                                            |
+| `brave`                    | Free API key            | Default. Rate-limited (~1 req/s + monthly quota) — avoid parallel calls; on 429 retry or switch to `exa`/`parallel`.           |
+| `ddg`                      | Zero config             | **Currently broken as a fallback** — fails with "rate limited after retries"                                                    |
+| `searxng`                  | Self-hosted instance    | Needs a running instance at `searxng_url` (currently unreachable — localhost:8081 not running)                                 |
+| `exa`, `keenable`, `parallel`, `youcom` | API key / service | **Verified working keyless (2026-10)** — first choices when `brave` 429s                                                        |
+| `firecrawl`                | API key                 | Keyless tier 403s from this IP (VPN/proxy block) — unusable without a key                                                       |
 | `tavily`, `serpbase`, `serply` | Free API key        | Report `no_key` until you `ketch config set <name>_api_key <key>` (operator task — do not do this unprompted)                   |
 | `degoog`                   | Self-hosted URL         | Needs `degoog_url`                                                                                                             |
 
