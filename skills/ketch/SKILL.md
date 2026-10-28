@@ -334,7 +334,9 @@ runs when a JS shell is detected (or `--force-browser`).
   image-only PDFs return garbage** (measured: 6 tokens of noise, no error) —
   those need an OCR-capable `external_pdf_to_md_converter_command`, which is
   unset here (persist any change in dotnix's ketch generator — `config set`
-  won't survive a login).
+  won't survive a login). And never hand a PDF to the `read` tool: it treats it
+  as text and dumps the raw bytes (measured) — extract via ketch or render to
+  PNG first.
 
 A browser only solves the "page is a loading shell" class. When it returns a
 challenge/login page instead of content, say so rather than treating it as
