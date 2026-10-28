@@ -24,6 +24,24 @@ python3 "$Z" doctor                            # attachments whose file is not o
 Paths are relative to this skill's directory — resolve `<skill-dir>` from the
 directory the harness reports for this skill; never hardcode an absolute path.
 
+## Starting Zotero
+
+Zotero does not have to be open. `--headless` runs it with no window (warm start
+is about 2 s, a cold profile up to a minute):
+
+```bash
+python3 "$Z" start        # `zotero --headless`, waits for the API, then returns
+python3 "$Z" stop         # stops the instance this script started
+ZOTERO_AUTOSTART=1 python3 "$Z" search "Siegert"   # start on demand
+```
+
+Opening the Zotero window afterwards attaches it to the running instance, so the
+headless process can be left alone. If you prefer the GUI, just run Zotero
+normally and set `ZOTERO_AUTOSTART` unset or `0`.
+
+Environment overrides: `ZOTERO_CMD` (default `zotero --headless`),
+`ZOTERO_LOG` (default `/tmp/zotero-headless.log`).
+
 ## Requirements
 
 Zotero 7 must be running with **Settings → Advanced → "Allow other applications on
