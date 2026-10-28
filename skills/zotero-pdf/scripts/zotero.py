@@ -5,6 +5,7 @@ Subcommands:
     search QUERY       list matching items with their keys and PDF availability
     attachments ITEM   list the attachments of an item
     path ITEM          print the local PDF path (ITEM may be an item or attachment)
+    doctor             report attachments whose file is missing on disk
     info ITEM          metadata and abstract
 
 Zotero 7 must be running with "Allow other applications on this computer to
