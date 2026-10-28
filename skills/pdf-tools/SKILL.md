@@ -9,6 +9,14 @@ description: >
 
 # PDF Tools
 
+> **Status: work in progress.** These helpers are new, and their heuristics have
+> only been exercised on a handful of documents. When a command fails, or its
+> output looks wrong — a clipped equation, interleaved columns, a figure box that
+> swallows prose, text that silently went missing — **stop the original task**.
+> Say what went wrong, decide with the user how the skill should behave, fix it
+> (`scripts/pdf.py`, and this file), then resume the task. Pushing on with a
+> broken extraction silently corrupts whatever conclusion depends on it.
+
 Confirm the toolchain under Requirements first; if anything is missing, stop there.
 Otherwise one script does the work: `scripts/pdf.py`. Start with `info` — it
 reports whether the file has a text layer or needs OCR, which decides the rest.
