@@ -2,15 +2,16 @@
 """Read PDFs: decide text vs OCR, extract text and tables, render page images.
 
 Subcommands:
-    info   FILE                 page count, metadata, and whether a text layer exists
-    text   FILE                 extract text via pdftotext
-    pages  FILE --out DIR       render pages to PNG/JPEG via pdftoppm
-    tables FILE                 extract tables via pdfplumber (tsv or markdown)
-    ocr    FILE                 render pages and run tesseract
+    info     FILE               page count, metadata, text layer, column count
+    text     FILE               extract text via pdftotext (--columns for two-up pages)
+    pages    FILE --out DIR     render pages to PNG/JPEG via pdftoppm (--crop for a region)
+    figures  FILE [--out DIR]   locate figures/tables by caption, optionally render them
+    tables   FILE               extract tables via pdfplumber (tsv or markdown)
+    ocr      FILE               render pages and run tesseract
 
 Every subcommand accepts --pages (e.g. 1-5,8,12-). Output goes to stdout except
-`pages`, which writes files and prints their paths. Exit status is 0 on success,
-1 on a usage/processing error.
+`pages` and `figures --out`, which write files and print their paths. Exit status
+is 0 on success, 1 on a usage/processing error.
 
 Run `pdf.py <subcommand> --help` for details.
 """
