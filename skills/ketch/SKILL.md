@@ -58,6 +58,12 @@ Search and fetch full content from each result in one pass:
 ketch search "golang error handling" --scrape
 ```
 
+**When to fetch:** the snippet from a plain `search` is often enough — prefer it
+for browsing, it costs nothing extra. Only read pages you actually need: take
+URLs from a plain search and batch them through `ketch scrape <url> <url> ...`
+once. Reserve `search --scrape` for "give me every result's content in one
+pass" — it fetches all results, so failures (403, JS shells) multiply too.
+
 Customize the number of results:
 
 ```bash
