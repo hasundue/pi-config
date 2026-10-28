@@ -18,6 +18,7 @@ Z=<skill-dir>/scripts/zotero.py
 python3 "$Z" search "Siegert pseudostate"      # key, year, type, author, title
 python3 "$Z" info BH8XS93N                     # metadata, abstract, PDF status
 python3 "$Z" path BH8XS93N                     # local PDF path
+python3 "$Z" doctor                            # attachments whose file is not on disk
 ```
 
 Paths are relative to this skill's directory — resolve `<skill-dir>` from the
@@ -68,6 +69,14 @@ not reachable in Zotero and ask whether to look it up online instead.
   local API is a reader. Full-text search inside PDFs (`/fulltext`) is unreliable
   in practice (it has returned 404), so search metadata instead, then grep the
   extracted text with `pdf-tools`.
+- **Items saved by the browser connector are readable immediately.** The
+  connector hands the file to the running Zotero client, which writes it into
+  `storage/<ITEMKEY>/` at save time — opening the item is not required. Files are
+  only absent when the item arrived from another device or from zotero.org and
+  sync has not fetched it yet, which happens with **Settings → Sync → "Download
+  files as needed"** enabled. `doctor` lists exactly those attachments (and any
+  `linked_file` whose target vanished), so ask it before assuming a paper cannot
+  be read.
 - **Not every item has a PDF.** `info` prints `pdf none (<reason>)`; report that
   rather than searching the filesystem for look-alike files.
 

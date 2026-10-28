@@ -191,6 +191,57 @@ def cmd_attachments(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_doctor(args: argparse.Namespace) -> int:
+    """Report attachments whose file is not readable on this disk."""
+    entries: list[dict] = []
+    start = 0
+    while True:
+        chunk = get(f"items?itemType=attachment&limit=100&start={start}")
+        if not isinstance(chunk, list):
+            die("unexpected response while listing attachments")
+        entries.extend(chunk)
+        if len(chunk) < 100:
+            break
+        start += 100
+
+    pdfs = [entry for entry in entries if is_pdf(entry)]
+    present: list[dict] = []
+    missing_file: list[dict] = []
+    no_path: list[dict] = []
+    for entry in pdfs:
+        path = enclosure_path(entry)
+        if path is None:
+            no_path.append(entry)
+        elif path.exists():
+            present.append(entry)
+        else:
+            missing_file.append(entry)
+
+    print(
+        f"attachments: {len(entries)} | pdf: {len(pdfs)} | on disk: {len(present)} | "
+        f"file missing: {len(missing_file)} | no local path: {len(no_path)}"
+    )
+    for entry in missing_file:
+        meta = entry.get("data", {})
+        print(f"\nmissing file  {entry.get('key')}  {(meta.get('title') or '')[:60]}")
+        print(f"  expected at  {enclosure_path(entry)}")
+    for entry in no_path:
+        meta = entry.get("data", {})
+        print(f"\nno local path {entry.get('key')}  {(meta.get('title') or '')[:60]}")
+        print(f"  linkMode     {meta.get('linkMode')}")
+
+    if missing_file or no_path:
+        print(
+            "\nThese are in the library but not readable here. Zotero stores files "
+            "when it saves them, but with on-demand download enabled they arrive "
+            "only after the item is opened: open it once in Zotero, or turn off "
+            "Settings → Sync → 'Download files as needed'.",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
 def slugify(text: str, limit: int = 60) -> str:
     text = re.sub(r"[^\w\s.-]", "", text, flags=re.UNICODE)
     text = re.sub(r"\s+", "_", text.strip())
@@ -288,6 +339,9 @@ def main() -> int:
         help="copy the PDF into DIR under a clean file name and print that path",
     )
     p.set_defaults(func=cmd_path)
+
+    p = sub.add_parser("doctor", help="check which attachments are not readable on disk")
+    p.set_defaults(func=cmd_doctor)
 
     p = sub.add_parser("info", help="show metadata, abstract, and PDF status")
     p.add_argument("item", help="item key")
