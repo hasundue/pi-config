@@ -6,6 +6,7 @@ Subcommands:
     text     FILE               extract text via pdftotext (--columns for two-up pages)
     pages    FILE --out DIR     render pages to PNG/JPEG via pdftoppm (--crop for a region)
     figures  FILE [--out DIR]   locate figures/tables by caption, optionally render them
+    equations FILE [--out DIR]  locate numbered equations, optionally render them
     tables   FILE               extract tables via pdfplumber (tsv or markdown)
     ocr      FILE               render pages and run tesseract
 
@@ -275,6 +276,78 @@ def snap_box(
         if not changed:
             break
     return x0, y0, x1, y1
+
+
+def column_boxes(page, columns: int) -> list[tuple[float, float]]:
+    """(left, right) x extents for each column of a page."""
+    return [(page.width * i / columns, page.width * (i + 1) / columns) for i in range(columns)]
+
+
+def equation_blocks(page, columns: int) -> list[tuple[str, tuple[float, float, float, float]]]:
+    """Find displayed equations by their right-aligned (N) tag.
+
+    Math is emitted as overlapping fragments (numerators, denominators, scripts)
+    and prose often shares the same y range, so line order and plain whitespace
+    bands cannot isolate an equation. What does hold: an equation body is indented
+    while body text starts at the column margin, and the pieces of one equation are
+    vertically adjacent once drawn rules are counted. So the tag line seeds a
+    cluster of indented text and artwork joined by a 3pt gap.
+    """
+    import re
+
+    tag = re.compile(r"\(\s*[0-9]+[a-z]?\s*\)\s*$")
+    found: list[tuple[str, tuple[float, float, float, float]]] = []
+    for left, right in column_boxes(page, columns):
+        lines = page.crop((left, 0, right, page.height)).extract_text_lines()
+        if not lines:
+            continue
+        # use the observed margins: the column box edge is not where text ends
+        text_left = min(line["x0"] for line in lines)
+        text_right = max(line["x1"] for line in lines)
+        indent = text_left + 12
+        graphics = [
+            (obj["x0"], obj["top"], obj["x1"], obj["bottom"])
+            for group in (page.lines, page.rects, page.curves)
+            for obj in group
+            if obj["x1"] > left and obj["x0"] < right
+        ]
+        items = [(line["x0"], line["top"], line["x1"], line["bottom"]) for line in lines if line["x0"] >= indent]
+        items.extend(graphics)
+        if not items:
+            continue
+        items.sort(key=lambda item: item[1])
+        clusters: list[list[tuple[float, float, float, float]]] = []
+        for item in items:
+            if clusters and item[1] - max(b[3] for b in clusters[-1]) <= 3:
+                clusters[-1].append(item)
+            else:
+                clusters.append([item])
+
+        for line in lines:
+            match = tag.search(line["text"])
+            if not match:
+                continue
+            # a display is right-aligned and indented; prose ending in "(1)" is not
+            if line["x1"] < text_right - 6 or line["x0"] < indent:
+                continue
+            cluster = next(
+                (
+                    c
+                    for c in clusters
+                    if min(i[1] for i in c) <= line["top"] <= max(i[3] for i in c)
+                ),
+                None,
+            )
+            if cluster is None:
+                continue
+            x0 = min(b[0] for b in cluster)
+            x1 = max(b[2] for b in cluster)
+            # clamp: a display is a few lines at most, so ignore anything a
+            # paragraph's indented first line may have dragged into the cluster
+            y0 = max(min(b[1] for b in cluster), line["top"] - 40)
+            y1 = min(max(b[3] for b in cluster), line["bottom"] + 40)
+            found.append((match.group(0).strip(), (x0, y0 - 2, x1 + 2, y1 + 2)))
+    return found
 
 
 def render_region(
@@ -613,6 +686,46 @@ def cmd_figures(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_equations(args: argparse.Namespace) -> int:
+    pdf = args.file
+    pages = parse_pages(args.pages, page_count(pdf))
+    columns = detect_columns(pdf)
+    out_dir = Path(args.out).expanduser() if args.out else None
+    if out_dir:
+        need("pdftoppm")
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+    import pdfplumber
+
+    found = 0
+    with pdfplumber.open(str(pdf)) as doc:
+        for number in pages:
+            if number > len(doc.pages):
+                break
+            for label, region in equation_blocks(doc.pages[number - 1], columns):
+                found += 1
+                x0, y0, x1, y1 = region
+                head = (
+                    f"page {number}  eq {label}  "
+                    f"x={x0:.0f},y={y0:.0f},w={x1 - x0:.0f},h={y1 - y0:.0f}"
+                )
+                if out_dir:
+                    name = label.strip("()")
+                    target = out_dir / f"{pdf.stem}-p{number}-eq{name}"
+                    path = render_region(pdf, number, region, target, args.dpi)
+                    print(f"{head}  -> {path}")
+                else:
+                    print(head)
+    if not found:
+        print(
+            "no numbered display equations found; render the page and crop by "
+            "hand with `pages --crop x0,y0,x1,y1 --snap`",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
 def cmd_tables(args: argparse.Namespace) -> int:
     pdf = args.file
     pages = parse_pages(args.pages, page_count(pdf))
@@ -788,6 +901,13 @@ def main() -> int:
     p.add_argument("--dpi", type=int, default=150)
     p.add_argument("--padding", type=float, default=4.0, help="points added around each region")
     p.set_defaults(func=cmd_figures)
+
+    p = sub.add_parser("equations", help="locate (and optionally render) numbered equations")
+    add_file(p)
+    add_pages(p)
+    p.add_argument("--out", help="render each equation here; omit to only list boxes")
+    p.add_argument("--dpi", type=int, default=200)
+    p.set_defaults(func=cmd_equations)
 
     p = sub.add_parser("tables", help="extract tables with pdfplumber")
     add_file(p)

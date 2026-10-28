@@ -57,6 +57,7 @@ needed it, then let the user decide.
 | Words without layout padding | `text --mode raw` |
 | See a page: charts, scans, columns | `pages --out /tmp/doc --pages 3` then `read` the PNG |
 | A figure or table only | `figures --pages 4 --out /tmp/figs` then `read` each PNG |
+| An equation as an image | `equations --pages 2 --out /tmp/eqs` then `read` the PNG |
 | A specific region (equation, panel) | `pages --out /tmp/one --pages 2 --crop 40,330,300,400 --snap --dpi 200` |
 | Math worth trusting | LaTeX source for arXiv papers, else crop and read |
 | Table cells, borderless (papers, reports) | `tables --strategy text --format md` |
@@ -114,8 +115,14 @@ needed it, then let the user decide.
   mkdir -p /tmp/src && tar -xzf /tmp/src.tar.gz -C /tmp/src   # main.tex
   ```
 
-  Otherwise crop the equation and read it as an image; never reconstruct a
-  formula from extracted text alone.
+  Otherwise read the equation as an image; never reconstruct a formula from
+  extracted text alone. `equations` finds displays by their right-aligned `(N)`
+  tag and renders each one whole — fractions, big operators, and multi-line
+  splits included — so the maths is read from pixels, not the mangled text
+  layer.
+- **`equations` needs numbered displays.** An equation without a printed `(N)`,
+  or one flushed to the margin, is not detected; fall back to `pages --crop`
+  with `--snap`.
 - **`figures` assumes artwork above the caption.** It finds lines matching
   `FIG. 1.` / `Figure 3:` / `TABLE II.` (prose like "Figure 3 shows" is ignored),
   walks up through vector artwork, and widens the box to that artwork. Vector
