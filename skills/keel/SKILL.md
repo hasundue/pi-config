@@ -66,17 +66,9 @@ cutting one is a commitment, and you do not yet know whether the work earns it.
 Extract intent before writing anything. Whatever the user asked for is a guess
 at what they want; your job is to find the gap while it is still free to close.
 
-Start with a hypothesis and an honest confidence number:
-
-```
-HYPOTHESIS: <one sentence: what they actually want>
-CONFIDENCE: ~40% -- missing: who it's for, what "fast" means
-```
-
-Below ~70%, name what is missing on the same line. A bare number is noise.
-
-Then ask. One question at a time is the default; batching a short checklist is
-fine when the questions are independent and the user is moving fast. Either way:
+Open with your current reading of what they want, in your own words, and name
+what is still unclear. Then ask, grouping the questions in whatever way fits
+the user and the uncertainty:
 
 - **Attach your guess to every question.** Reacting is faster than generating,
   and it exposes your assumptions where the user can correct them.
@@ -87,8 +79,9 @@ fine when the questions are independent and the user is moving fast. Either way:
   constraint, and what is explicitly **not** being built.
 
 Stop when you can predict the user's reaction to the next three questions you
-would ask. That is a checkable test, not a vibe. If several rounds pass and the
-number will not rise, say so and step back -- the ask itself is broken.
+would ask. That is a checkable test, not a vibe. If several rounds pass and your
+understanding is not improving, say so and step back -- the ask itself is
+broken.
 
 ### 2. Decide whether the work is large
 
@@ -104,7 +97,7 @@ changed, unknowns remaining) so the branch is justified rather than assumed.
 Only now. If on `main` or `master`, create a branch:
 
 ```bash
-git switch -c keel/<slug>
+git switch -c <branch-name>
 ```
 
 If already on a feature branch, stay on it -- do not nest branches. Say which
@@ -145,22 +138,14 @@ decisions and their reasons, commands. Keel's whole handoff story rests on this.
 
 ### 6. Restate and ask for an explicit yes
 
-Write it back tight, in their language, line by line:
+Restate the agreed outcome, who it is for, why now, what success looks like,
+the binding constraint, and what is out of scope. Use their language and keep
+it tight; do not force it into a fixed template.
 
-```
-Outcome:      <one line>
-Who:          <one line>
-Why now:      <one line>
-Success:      <one line>
-Constraint:   <one line>
-Out of scope: <one line>
-
-Yes / no / refine?
-```
-
-These are **not** yes: "whatever you think", "sounds good", "sure, let's go",
-silence followed by "okay, start". They are delegation or polite exits. Re-ask
-with two concrete options instead. If they correct you, fold it in and restate.
+Ask for an explicit yes. These are **not** yes: "whatever you think",
+"sounds good", "sure, let's go", silence followed by "okay, start". They are
+delegation or polite exits. Re-ask with two concrete options instead. If they
+correct you, fold it in and restate.
 
 ### 7. On yes: record it, then stop the turn
 
@@ -185,34 +170,12 @@ Then **end the turn**. Do not start implementing, do not "just scaffold", do not
 open the first file. The gate is the feature; skipping the stop empties it out.
 Hand control back and let the user choose how to proceed.
 
-### 8. Implement, against the file
-
-Start by reading `SPEC.md`. Work through the criteria, not through a feeling of
-doneness. When reality contradicts the spec -- a constraint was wrong, a step is
-impossible, scope must grow -- update the file first, then ask. Silent drift is
-the failure this skill exists to prevent.
-
-### 9. Verify, then close
-
-Walk the acceptance criteria one by one and report evidence per item: the
-command and its result, or what you observed and where. Unmet criteria are
-reported as unmet, not renegotiated after the fact.
-
-What happens to the docs is the user's call, case by case: delete them before
-merging, leave them on the branch, or keep them deliberately. Ask; do not
-archive, move, or delete on your own.
-
 ## Handoff
 
-The spec is the only channel to a cold executor. Offer three ways out, and let
-the user pick:
-
-1. **Same session** -- continue here.
-2. **New session** -- open with "Read `ISSUE.md` and `SPEC.md`, then execute.
-   Ask if blocked."
-3. **Headless** -- `pi --print "Read ISSUE.md and SPEC.md in <repo>, then execute
-   the spec. Ask if blocked."` Full tools, no supervision: use only when the
-   spec is tight and the stop conditions are explicit.
+The spec is the only task-specific channel to an executor; the execution rules
+live in the `sail` skill. When the work passes to another session or runner,
+point it at `ISSUE.md`, `SPEC.md`, and `sail`, and make sure the spec's stop
+conditions are explicit enough that it stops rather than guesses.
 
 A question from a cold executor is a spec defect. Answer it, write the answer
 into `SPEC.md`, then let it continue -- so the next cold run never has to ask.
@@ -229,14 +192,14 @@ overrides it. Offer it once; never install it unasked.
 - Starting to implement, or "just setting up", in the same turn as the yes
 - Cutting a branch before the interview shows the work is large
 - Grinding through questions when the answer is already obvious
-- A restate without an out-of-scope line
+- A restate that omits what is out of scope
 - Accepting "whatever you think" as a terminal answer
 - A criterion with no `verify:`
 - Writing the spec before the problem
 - Questions with no guess attached -- that is surveying, not interviewing
 - A spec only readable by someone who was in the conversation
 - Renegotiating a criterion after the work instead of reporting it unmet
-- Three or more rounds without the confidence number rising
+- Three or more rounds without your understanding improving
 
 ## Verification
 
