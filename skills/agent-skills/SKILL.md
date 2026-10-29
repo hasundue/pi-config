@@ -15,11 +15,17 @@ which coding agents load structured, domain-specific instructions.
 
 ## Documentation
 
-The Agent Skills docs live in the official repository of the specification and
-are not vendored here. Fetch them with `ketch scrape` (or `gh repo clone
-agentskills/agentskills` for a local copy).
+The docs live in `agentskills/agentskills` (Apache-2.0) and are not vendored here,
+so the skill cannot drift from the spec. Fetch them with `curl` — they are already
+markdown, and running them through an HTML extractor escapes them:
 
-Base URL: `https://github.com/agentskills/agentskills/blob/main`
+```bash
+curl -s https://agentskills.io/skill-creation/best-practices.md
+curl -s https://raw.githubusercontent.com/agentskills/agentskills/main/docs/skill-creation/best-practices.mdx
+```
+
+Either source works; `gh repo clone agentskills/agentskills` gives a local copy for
+offline use. Avoid GitHub `blob/` URLs, which return HTML.
 
 - **General**: `docs/`
   - `home.mdx` — overview of Agent Skills
