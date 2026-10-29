@@ -9,13 +9,13 @@ description: >
 
 # PDF Tools
 
-> **Status: work in progress.** These helpers are new, and their heuristics have
-> only been exercised on a handful of documents. When a command fails, or its
-> output looks wrong — a clipped equation, interleaved columns, a figure box that
-> swallows prose, text that silently went missing — **stop the original task**.
-> Say what went wrong, decide with the user how the skill should behave, fix it
-> (`scripts/pdf.py`, and this file), then resume the task. Pushing on with a
-> broken extraction silently corrupts whatever conclusion depends on it.
+> **Status: work in progress — keep improving it.** A failed or wrong extraction
+> is a defect in this skill, not a quirk of the document. **Stop the original
+> task and fix the skill first**: reduce it to the smallest reproducible case,
+> patch `scripts/pdf.py` and this file, then rerun the failing case plus one that
+> already worked. Don't quietly work around it with `pages --crop`, raw text
+> cleanup, or another tool. Obvious bugs: fix directly. Real behavior choices:
+> ask. If you can't fix it safely, say what failed and leave a note here.
 
 Confirm the toolchain under Requirements first; if anything is missing, stop there.
 Otherwise one script does the work: `scripts/pdf.py`. Start with `info` — it
@@ -124,11 +124,22 @@ needed it, then let the user decide.
   ```
 
   Otherwise read the equation as an image; never reconstruct a formula from
-  extracted text alone. `equations` finds displays by their right-aligned `(N)`
-  tag and renders each one whole — fractions, big operators, and multi-line
-  splits included — so the maths is read from pixels, not the mangled text
-  layer.
-- **`equations` needs numbered displays.** An equation without a printed `(N)`,
+  extracted text alone. `equations` finds displays by their right-aligned tag
+  and renders each one whole — fractions, big operators, and multi-line splits
+  included — so the maths is read from pixels, not the mangled text layer. Tag
+  detection uses `pdftotext -bbox-layout`, not pdfplumber's line text, because
+  old journal fonts may expose parentheses as `(cid:N)` to pdfplumber while
+  poppler decodes them. Tags such as `(20)`, `(C21a)`, `(1a)`, fullwidth
+  `共20兲`, and ASCII substitutes such as `~1a!` are all recognised. The journal
+  header year, e.g. `(2007)`, is ignored; header/footer lines are excluded.
+- **Adjacent displays can share one crop.** Equations separated by less than a
+  line of whitespace are grouped into one image. If you need exactly one
+  equation, use `pages --crop` with the coordinates printed by `equations`, or
+  render the page and crop by hand.
+- **Image-based displays are included.** `equations` treats embedded images as
+  part of the equation body, so matrix-heavy displays stored as images are
+  cropped whole instead of returning only their tag.
+- **`equations` needs numbered displays.** An equation without a printed number,
   or one flushed to the margin, is not detected; fall back to `pages --crop`
   with `--snap`.
 - **`figures` assumes artwork above the caption.** It finds lines matching

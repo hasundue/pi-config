@@ -21,10 +21,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 PAGE_MARK = "--- page {n} ---"
@@ -278,75 +280,172 @@ def snap_box(
     return x0, y0, x1, y1
 
 
-def column_boxes(page, columns: int) -> list[tuple[float, float]]:
+def column_boxes(width: float, columns: int) -> list[tuple[float, float]]:
     """(left, right) x extents for each column of a page."""
-    return [(page.width * i / columns, page.width * (i + 1) / columns) for i in range(columns)]
+    return [(width * i / columns, width * (i + 1) / columns) for i in range(columns)]
 
 
-def equation_blocks(page, columns: int) -> list[tuple[str, tuple[float, float, float, float]]]:
-    """Find displayed equations by their right-aligned (N) tag.
+# pdftotext -bbox-layout decodes custom font encodings that pdfplumber exposes as
+# ``(cid:N)``. Equation tags in the wild use ordinary parentheses, fullwidth
+# parentheses, or ASCII substitutes from a missing glyph map (``~1a!``).
+_TAG_TRANSLATION = str.maketrans(
+    {"共": "(", "兲": ")", "（": "(", "）": ")", "~": "(", "!": ")"}
+)
+_TAG_LABEL = r"[A-Z]?\.?\d+(?:\.\d+)*[a-z]?"
+_TAG_RE = re.compile(rf"^[（(]\s*({_TAG_LABEL})\s*[)）][.,;:]?$")
+_CID_TAG_RE = re.compile(rf"^\(\s*cid:\d+\s*\)\s*({_TAG_LABEL})\s*\(\s*cid:\d+\s*\)[.,;:]?$")
+_YEAR_RE = re.compile(r"^(?:19|20)\d{2}$")
+_XML_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+EQUATION_GAP = 5.0
 
-    Math is emitted as overlapping fragments (numerators, denominators, scripts)
-    and prose often shares the same y range, so line order and plain whitespace
-    bands cannot isolate an equation. What does hold: an equation body is indented
-    while body text starts at the column margin, and the pieces of one equation are
-    vertically adjacent once drawn rules are counted. So the tag line seeds a
-    cluster of indented text and artwork joined by a 3pt gap.
+
+def _local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def _tag_label(word: str) -> str | None:
+    """Return the equation number wrapped by a word, if it is a tag."""
+    text = word.strip()
+    match = _TAG_RE.match(text.translate(_TAG_TRANSLATION))
+    if match:
+        return match.group(1)
+    match = _CID_TAG_RE.match(text)
+    return match.group(1) if match else None
+
+
+def layout_lines(pdf: Path, page: int) -> list[dict]:
+    """Decoded text lines with PDF-point boxes from pdftotext's layout XML.
+
+    pdfplumber's line text keeps unencoded glyphs as ``(cid:N)``; poppler
+    resolves them, which is what makes equation-number detection reliable across
+    old journal fonts.
     """
-    import re
+    proc = run(
+        ["pdftotext", "-bbox-layout", "-f", str(page), "-l", str(page), str(pdf), "-"]
+    )
+    try:
+        root = ET.fromstring(_XML_CONTROL.sub("", proc.stdout))
+    except ET.ParseError as exc:
+        die(f"pdftotext produced malformed layout XML for page {page}: {exc}")
 
-    tag = re.compile(r"\(\s*[0-9]+[a-z]?\s*\)\s*$")
+    lines: list[dict] = []
+    for element in root.iter():
+        if _local_name(element.tag) != "line":
+            continue
+        words = [word for word in element.iter() if _local_name(word.tag) == "word"]
+        if not words:
+            continue
+        lines.append(
+            {
+                "text": " ".join((word.text or "") for word in words),
+                "words": [
+                    (
+                        word.text or "",
+                        float(word.attrib["xMin"]),
+                        float(word.attrib["yMin"]),
+                        float(word.attrib["xMax"]),
+                        float(word.attrib["yMax"]),
+                    )
+                    for word in words
+                ],
+                "x0": float(element.attrib["xMin"]),
+                "top": float(element.attrib["yMin"]),
+                "x1": float(element.attrib["xMax"]),
+                "bottom": float(element.attrib["yMax"]),
+            }
+        )
+    return lines
+
+
+def equation_blocks(
+    pdf: Path, page_number: int, page, columns: int
+) -> list[tuple[str, tuple[float, float, float, float]]]:
+    """Find displayed equations by their right-aligned number tag.
+
+    Tags come from decoded pdftotext layout lines, so custom font encodings do
+    not hide them. The equation body is the cluster of indented text and drawn
+    rules around the tag; header/footer lines are excluded, and tags in the
+    journal header year are ignored.
+    """
+    lines = layout_lines(pdf, page_number)
+    if not lines:
+        return []
+
+    width, height = page.width, page.height
+    body_top = 0.05 * height
+    body_bottom = 0.97 * height
+    graphics = [
+        (obj["x0"], obj["top"], obj["x1"], obj["bottom"])
+        for group in (page.lines, page.rects, page.curves, page.images)
+        for obj in group
+    ]
     found: list[tuple[str, tuple[float, float, float, float]]] = []
-    for left, right in column_boxes(page, columns):
-        lines = page.crop((left, 0, right, page.height)).extract_text_lines()
-        if not lines:
+
+    for left, right in column_boxes(width, columns):
+        column_lines = [line for line in lines if left - 1 <= line["x0"] < right]
+        if not column_lines:
             continue
-        # use the observed margins: the column box edge is not where text ends
-        text_left = min(line["x0"] for line in lines)
-        text_right = max(line["x1"] for line in lines)
+        body_lines = [line for line in column_lines if body_top <= line["top"] <= body_bottom]
+        margin_lines = body_lines or column_lines
+        text_left = min(line["x0"] for line in margin_lines)
+        right_edges = [line["x1"] for line in margin_lines if line["x1"] < right - 3]
+        text_right = max(right_edges or [max(line["x1"] for line in margin_lines)])
         indent = text_left + 12
-        graphics = [
-            (obj["x0"], obj["top"], obj["x1"], obj["bottom"])
-            for group in (page.lines, page.rects, page.curves)
-            for obj in group
-            if obj["x1"] > left and obj["x0"] < right
+
+        column_graphics = [box for box in graphics if box[2] > left and box[0] < right]
+        items = [
+            (line["x0"], line["top"], line["x1"], line["bottom"])
+            for line in column_lines
+            if line["x0"] >= indent
         ]
-        items = [(line["x0"], line["top"], line["x1"], line["bottom"]) for line in lines if line["x0"] >= indent]
-        items.extend(graphics)
-        if not items:
-            continue
+        items.extend(column_graphics)
         items.sort(key=lambda item: item[1])
         clusters: list[list[tuple[float, float, float, float]]] = []
         for item in items:
-            if clusters and item[1] - max(b[3] for b in clusters[-1]) <= 3:
+            if clusters and item[1] - max(box[3] for box in clusters[-1]) <= EQUATION_GAP:
                 clusters[-1].append(item)
             else:
                 clusters.append([item])
 
-        for line in lines:
-            match = tag.search(line["text"])
-            if not match:
+        page_found: list[tuple[str, tuple[float, float, float, float], float, float]] = []
+        for line in column_lines:
+            if not body_top <= line["top"] <= body_bottom:
                 continue
-            # a display is right-aligned and indented; prose ending in "(1)" is not
-            if line["x1"] < text_right - 6 or line["x0"] < indent:
+            words = line["words"]
+            if not words:
+                continue
+            label = _tag_label(words[-1][0])
+            if label is None or _YEAR_RE.match(label):
+                continue
+            # a display is right-aligned; a prose citation ending in (N) is not
+            if words[-1][3] < text_right - 6:
                 continue
             cluster = next(
                 (
-                    c
-                    for c in clusters
-                    if min(i[1] for i in c) <= line["top"] <= max(i[3] for i in c)
+                    candidate
+                    for candidate in clusters
+                    if min(item[1] for item in candidate)
+                    <= line["top"]
+                    <= max(item[3] for item in candidate)
                 ),
                 None,
             )
             if cluster is None:
                 continue
-            x0 = min(b[0] for b in cluster)
-            x1 = max(b[2] for b in cluster)
-            # clamp: a display is a few lines at most, so ignore anything a
-            # paragraph's indented first line may have dragged into the cluster
-            y0 = max(min(b[1] for b in cluster), line["top"] - 40)
-            y1 = min(max(b[3] for b in cluster), line["bottom"] + 40)
-            found.append((match.group(0).strip(), (x0, y0 - 2, x1 + 2, y1 + 2)))
+            x0 = min(item[0] for item in cluster)
+            x1 = max(item[2] for item in cluster)
+            y0 = min(item[1] for item in cluster)
+            y1 = max(item[3] for item in cluster)
+            # Guard against a paragraph's indented first line dragging a whole
+            # block into the crop; keep the tag line in range even if it does.
+            if y1 - y0 > 0.35 * height:
+                y0 = max(y0, line["top"] - 80)
+                y1 = min(y1, line["bottom"] + 80)
+            page_found.append(
+                (label, (x0 - 2, y0 - 2, x1 + 2, y1 + 2), line["top"], x0)
+            )
+        page_found.sort(key=lambda item: (item[2], item[3]))
+        found.extend((label, box) for label, box, _, _ in page_found)
     return found
 
 
@@ -687,6 +786,7 @@ def cmd_figures(args: argparse.Namespace) -> int:
 
 
 def cmd_equations(args: argparse.Namespace) -> int:
+    need("pdftotext")
     pdf = args.file
     pages = parse_pages(args.pages, page_count(pdf))
     columns = detect_columns(pdf)
@@ -702,7 +802,7 @@ def cmd_equations(args: argparse.Namespace) -> int:
         for number in pages:
             if number > len(doc.pages):
                 break
-            for label, region in equation_blocks(doc.pages[number - 1], columns):
+            for label, region in equation_blocks(pdf, number, doc.pages[number - 1], columns):
                 found += 1
                 x0, y0, x1, y1 = region
                 head = (
