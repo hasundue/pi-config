@@ -35,3 +35,12 @@ Base URL: `https://github.com/agentskills/agentskills/blob/main`
 
 Read the most relevant docs for your current task first, and refer to the others
 as needed.
+
+## Maturity banner
+
+Skills that can be silently wrong (parsers, extractors, tools with a moving API)
+open with a `> **Status: work in progress.**` blockquote naming 2–3 concrete
+failure modes and telling the agent to stop, report, and fix the skill before
+resuming. Skip it for procedure skills. Keep line 1 verbatim so
+`grep -rl 'Status: work in progress' skills/` finds unfinished ones, and swap the
+banner for `## Known limits` once N clean tasks accumulate. Example: `pdf-tools`.
