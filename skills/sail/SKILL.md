@@ -82,3 +82,53 @@ deliberately. Ask; do not archive, move, or delete on your own.
 End with a compact report: what changed, which criteria passed with what
 evidence, what is unmet, and what still needs a decision. The next action is the
 user's.
+
+## Merge after confirmation
+
+Merge only after the user has confirmed the result. Passing tests are evidence,
+not permission to merge.
+
+Before merging:
+
+- Run the repository's final gates on the branch, typically the formatter check
+  and the full test suite.
+- Confirm what happens to `ISSUE.md` and `SPEC.md`. If they should not land on
+  `main`, archive the original branch or tag before creating the squashed
+  history, then remove the files from the merge commit.
+- Follow the repository's merge convention. If there is none, ask whether the
+  user wants a single linear commit, a merge commit, or a platform squash
+  merge. Do not choose the history shape silently.
+
+A safe default when the user wants one linear commit and the spec should stay
+out of `main`:
+
+```bash
+# 1. Archive the original branch (or create a tag).
+git branch archive/<slug> <branch>
+git push origin archive/<slug>          # if it must survive outside the clone
+
+# 2. Squash the work on a temporary branch from main.
+git switch main
+git switch -c squash/<slug>
+git merge --squash <branch>
+
+# 3. Drop the spec files from the squashed tree if agreed.
+git rm ISSUE.md SPEC.md
+
+# 4. Commit with the repository's message style.
+git commit -m "<repo-style message>"
+
+# 5. Re-run the final gates on the squashed commit, then merge.
+git switch main
+git merge --ff-only squash/<slug>
+
+# 6. Push only if the user asked.
+git push origin main
+
+# 7. Clean up, keeping the archive if it holds the only spec copy.
+git branch -d squash/<slug>
+```
+
+If the repository uses pull requests, prefer the platform's squash merge and
+keep the archive branch on the remote. If the user wants a merge commit, use
+`--no-ff` instead. Never rewrite `main` or force-push it.
