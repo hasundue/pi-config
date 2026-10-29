@@ -11,9 +11,10 @@ description: >
 # Agent Skills
 
 This skill documents the Agent Skills system — the standardized mechanism by
-which coding agents load structured, domain-specific instructions.
+which coding agents load structured, domain-specific instructions. The spec
+comes first, our own conventions last.
 
-## Documentation
+## Upstream documentation (authoritative)
 
 The docs live in `agentskills/agentskills` (Apache-2.0) and are not vendored here,
 so the skill cannot drift from the spec. Fetch them with `curl` — they are already
@@ -42,7 +43,11 @@ offline use. Avoid GitHub `blob/` URLs, which return HTML.
 Read the most relevant docs for your current task first, and refer to the others
 as needed.
 
-## Maturity banner
+## Local conventions (ours)
+
+Not part of the spec; preferences we can change freely.
+
+### Maturity banner
 
 Skills that can be silently wrong (parsers, extractors, tools with a moving API)
 open with a `> **Status: work in progress.**` blockquote naming 2–3 concrete
