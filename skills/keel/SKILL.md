@@ -1,0 +1,232 @@
+---
+name: keel
+description: >
+  Pre-work spec gate for large changes. Before implementing, lays down a problem
+  statement (ISSUE.md) and an agreed spec with acceptance criteria (SPEC.md) on a
+  working branch, then stops until the user gives an explicit yes. Use at the
+  start of a feature, refactor, migration, or any multi-file change whose shape
+  is not yet agreed; when the user says "spec it out", "define the criteria",
+  "before we start", or "let's plan"; or when you catch yourself about to
+  guess at requirements. When unsure whether a task is large enough, ask
+  instead of auto-invoking.
+---
+
+# Keel
+
+Lay the keel before the hull: agree on the problem, the spec, and the acceptance
+criteria on a working branch, then stop until the user says yes.
+
+Keel is not a mode and not a pipeline. It has four invariants you may not skip
+and a toolbox you use at your discretion. As models get better, the toolbox
+should be used better; the invariants should shrink, not grow.
+
+## Invariants
+
+1. **Nothing is implemented before the user's explicit yes.**
+2. **Before that yes, `ISSUE.md` and `SPEC.md` exist on a working branch.**
+3. **The restate names what is out of scope.**
+4. **If scope moves mid-work, it moves in the file and gets re-confirmed.**
+
+Everything else -- how many questions, whether to research first, how to phrase
+the restate -- is judgment.
+
+## When to use this
+
+Routing is conservative on purpose: a wrong auto-invocation is more annoying
+than a missed one, because `/skill:keel` is cheap to type.
+
+Use it when:
+
+- a feature, refactor, migration, or multi-file change whose shape is not agreed
+- the user says "spec it out", "define the criteria", "before we start",
+  "let's plan"
+- you catch yourself about to guess at requirements
+
+Skip it when:
+
+- rename, typo, mechanical edit, one obvious fix
+- pure question or lookup
+- the user explicitly asked for speed over verification
+
+When unsure, ask: "This might be small enough to just do. Keel pass, or go?"
+
+## Flow
+
+### 1. Branch
+
+Check where you are. If on `main` or `master`, create a branch before writing
+anything:
+
+```bash
+git switch -c keel/<slug>
+```
+
+If already on a feature branch, stay on it -- do not nest branches. Say which
+branch you are on. Do not push.
+
+### 2. Interview
+
+Extract intent before writing anything. Whatever the user asked for is a guess
+at what they want; your job is to find the gap while it is still free to close.
+
+Start with a hypothesis and an honest confidence number:
+
+```
+HYPOTHESIS: <one sentence: what they actually want>
+CONFIDENCE: ~40% -- missing: who it's for, what "fast" means
+```
+
+Below ~70%, name what is missing on the same line. A bare number is noise.
+
+Then ask. One question at a time is the default; batching a short checklist is
+fine when the questions are independent and the user is moving fast. Either way:
+
+- **Attach your guess to every question.** Reacting is faster than generating,
+  and it exposes your assumptions where the user can correct them.
+- Probe sophistication-signaling answers. "Scalable", "clean", "modern",
+  "the standard approach" are conventions, not wants. Ask: *"If you didn't have
+  to justify this to anyone, what would you actually want?"*
+- Cover, at minimum: who benefits, why now, what success looks like, the binding
+  constraint, and what is explicitly **not** being built.
+
+Stop when you can predict the user's reaction to the next three questions you
+would ask. That is a checkable test, not a vibe. If several rounds pass and the
+number will not rise, say so and step back -- the ask itself is broken.
+
+### 3. Write `ISSUE.md` -- problem only
+
+Write the problem before the solution, and keep the solution out of it. Use the
+user's words verbatim where you can, in quotes. Include what was tried and why
+it was not enough. If you cannot state the problem without naming a
+implementation, you have not found it yet.
+
+Show the file. Let them correct it.
+
+### 4. Write `SPEC.md` -- the agreement
+
+Fill the skeleton in `references/templates.md`. Three parts matter most:
+
+- **Acceptance criteria** -- observable outcomes, not activities. "Login works"
+  is not a criterion; "an expired token redirects to `/login` and preserves the
+  return path" is. Each one gets a `verify:` -- a command, or a manual step. If
+  you cannot say how to check it, split it until you can, or drop it. A
+  criterion nobody can check is decoration.
+- **Out of scope** -- non-negotiable. Half of misalignment is silent disagreement
+  about what is not being built.
+- **Stop conditions** -- when to stop instead of grinding. Defaults:
+  - the same failure twice -> write the cause, stop
+  - the work needs to touch something outside the spec -> stop
+  - a genuine trade-off needs a human decision -> stop
+
+  Add per-task limits (attempts, time, files) when the task invites a rabbit
+  hole. Stopping is not failing, but it must leave a trace: write the situation
+  under `## Blocker`, then ask. Never stop silently.
+
+Write the file so it can be read **cold** -- by a session that has none of this
+conversation. No "as discussed", no "the usual place". Paths, current behavior,
+decisions and their reasons, commands. Keel's whole handoff story rests on this.
+
+### 5. Restate and ask for an explicit yes
+
+Write it back tight, in their language, line by line:
+
+```
+Outcome:      <one line>
+Who:          <one line>
+Why now:      <one line>
+Success:      <one line>
+Constraint:   <one line>
+Out of scope: <one line>
+
+Yes / no / refine?
+```
+
+These are **not** yes: "whatever you think", "sounds good", "sure, let's go",
+silence followed by "okay, start". They are delegation or polite exits. Re-ask
+with two concrete options instead. If they correct you, fold it in and restate.
+
+### 6. On yes: record it, then stop the turn
+
+Add to `SPEC.md`:
+
+```markdown
+## Confirmed
+2025-12-01 -- user: "go that way"
+```
+
+Commit the two files on the branch, as their own commit:
+
+```bash
+git add ISSUE.md SPEC.md
+git commit -m "keel: <slug>"
+```
+
+The commit is what makes the branch guard meaningful -- an untracked file is
+invisible to it, and follows you across branch switches.
+
+Then **end the turn**. Do not start implementing, do not "just scaffold", do not
+open the first file. The gate is the feature; skipping the stop empties it out.
+Hand control back and let the user choose how to proceed.
+
+### 7. Implement, against the file
+
+Start by reading `SPEC.md`. Work through the criteria, not through a feeling of
+doneness. When reality contradicts the spec -- a constraint was wrong, a step is
+impossible, scope must grow -- update the file first, then ask. Silent drift is
+the failure this skill exists to prevent.
+
+### 8. Verify, then close
+
+Walk the acceptance criteria one by one and report evidence per item: the
+command and its result, or what you observed and where. Unmet criteria are
+reported as unmet, not renegotiated after the fact.
+
+What happens to the docs is the user's call, case by case: delete them before
+merging, leave them on the branch, or keep them deliberately. Ask; do not
+archive, move, or delete on your own.
+
+## Handoff
+
+The spec is the only channel to a cold executor. Offer three ways out, and let
+the user pick:
+
+1. **Same session** -- continue here.
+2. **New session** -- open with "Read `ISSUE.md` and `SPEC.md`, then execute.
+   Ask if blocked."
+3. **Headless** -- `pi --print "Read ISSUE.md and SPEC.md in <repo>, then execute
+   the spec. Ask if blocked."` Full tools, no supervision: use only when the
+   spec is tight and the stop conditions are explicit.
+
+A question from a cold executor is a spec defect. Answer it, write the answer
+into `SPEC.md`, then let it continue -- so the next cold run never has to ask.
+
+## Optional: keep the notes off main
+
+`scripts/install-hook.sh` installs a `pre-push` guard that rejects pushes to
+`main`/`master` whose tree still contains `ISSUE.md` or `SPEC.md`. It is a
+broom, not a judge: it checks presence, not truth, and `git push --no-verify`
+overrides it. Offer it once; never install it unasked.
+
+## Red flags
+
+- Starting to implement, or "just setting up", in the same turn as the yes
+- A restate without an out-of-scope line
+- Accepting "whatever you think" as a terminal answer
+- A criterion with no `verify:`
+- Writing the spec before the problem
+- Questions with no guess attached -- that is surveying, not interviewing
+- A spec only readable by someone who was in the conversation
+- Renegotiating a criterion after the work instead of reporting it unmet
+- Three or more rounds without the confidence number rising
+
+## Verification
+
+- [ ] Branch is not `main`/`master`
+- [ ] `ISSUE.md` states the problem and contains no solution
+- [ ] `SPEC.md` has criteria, each with `verify:`, plus out-of-scope and stop conditions
+- [ ] A restate was written back, including out of scope
+- [ ] The user said yes explicitly; "sounds good" was re-asked
+- [ ] `## Confirmed` records the date and the user's words
+- [ ] Both files are committed on the branch
+- [ ] The turn ended at the gate; no implementation started
+- [ ] Mid-work scope changes were written to the file before acting
