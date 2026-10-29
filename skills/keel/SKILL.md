@@ -14,7 +14,8 @@ description: >
 # Keel
 
 Lay the keel before the hull: agree on the problem, the spec, and the acceptance
-criteria on a working branch, then stop until the user says yes.
+criteria, and cut a branch only when the work earns one. Then stop until the
+user says yes.
 
 Keel is not a mode and not a pipeline. It has four invariants you may not skip
 and a toolbox you use at your discretion. As models get better, the toolbox
@@ -23,7 +24,8 @@ should be used better; the invariants should shrink, not grow.
 ## Invariants
 
 1. **Nothing is implemented before the user's explicit yes.**
-2. **Before that yes, `ISSUE.md` and `SPEC.md` exist on a working branch.**
+2. **Before that yes, the work is either declared small or has `ISSUE.md` and
+   `SPEC.md` committed on a working branch.**
 3. **The restate names what is out of scope.**
 4. **If scope moves mid-work, it moves in the file and gets re-confirmed.**
 
@@ -50,21 +52,16 @@ Skip it when:
 
 When unsure, ask: "This might be small enough to just do. Keel pass, or go?"
 
+Keel is allowed to conclude the task is small and exit. An agent that thinks a
+task is heavy and finds out it is not has learned something useful; the cost of
+that discovery should be a few questions, not a branch.
+
 ## Flow
 
-### 1. Branch
+### 1. Interview first, branch later
 
-Check where you are. If on `main` or `master`, create a branch before writing
-anything:
-
-```bash
-git switch -c keel/<slug>
-```
-
-If already on a feature branch, stay on it -- do not nest branches. Say which
-branch you are on. Do not push.
-
-### 2. Interview
+Explore and ask before changing anything. Reading code is safe on any branch;
+cutting one is a commitment, and you do not yet know whether the work earns it.
 
 Extract intent before writing anything. Whatever the user asked for is a guess
 at what they want; your job is to find the gap while it is still free to close.
@@ -93,7 +90,27 @@ Stop when you can predict the user's reaction to the next three questions you
 would ask. That is a checkable test, not a vibe. If several rounds pass and the
 number will not rise, say so and step back -- the ask itself is broken.
 
-### 3. Write `ISSUE.md` -- problem only
+### 2. Decide whether the work is large
+
+The interview is also the measurement. If a few questions show the change is one
+obvious edit, say so and drop keel: no branch, no files, just do the work. That
+is a success, not a bail-out -- the ceremony was avoided, which is the point.
+
+If the work is large, name the evidence in one line (files touched, behaviours
+changed, unknowns remaining) so the branch is justified rather than assumed.
+
+### 3. Branch
+
+Only now. If on `main` or `master`, create a branch:
+
+```bash
+git switch -c keel/<slug>
+```
+
+If already on a feature branch, stay on it -- do not nest branches. Say which
+branch you are on. Do not push.
+
+### 4. Write `ISSUE.md` -- problem only
 
 Write the problem before the solution, and keep the solution out of it. Use the
 user's words verbatim where you can, in quotes. Include what was tried and why
@@ -102,7 +119,7 @@ implementation, you have not found it yet.
 
 Show the file. Let them correct it.
 
-### 4. Write `SPEC.md` -- the agreement
+### 5. Write `SPEC.md` -- the agreement
 
 Fill the skeleton in `references/templates.md`. Three parts matter most:
 
@@ -126,7 +143,7 @@ Write the file so it can be read **cold** -- by a session that has none of this
 conversation. No "as discussed", no "the usual place". Paths, current behavior,
 decisions and their reasons, commands. Keel's whole handoff story rests on this.
 
-### 5. Restate and ask for an explicit yes
+### 6. Restate and ask for an explicit yes
 
 Write it back tight, in their language, line by line:
 
@@ -145,7 +162,7 @@ These are **not** yes: "whatever you think", "sounds good", "sure, let's go",
 silence followed by "okay, start". They are delegation or polite exits. Re-ask
 with two concrete options instead. If they correct you, fold it in and restate.
 
-### 6. On yes: record it, then stop the turn
+### 7. On yes: record it, then stop the turn
 
 Add to `SPEC.md`:
 
@@ -168,14 +185,14 @@ Then **end the turn**. Do not start implementing, do not "just scaffold", do not
 open the first file. The gate is the feature; skipping the stop empties it out.
 Hand control back and let the user choose how to proceed.
 
-### 7. Implement, against the file
+### 8. Implement, against the file
 
 Start by reading `SPEC.md`. Work through the criteria, not through a feeling of
 doneness. When reality contradicts the spec -- a constraint was wrong, a step is
 impossible, scope must grow -- update the file first, then ask. Silent drift is
 the failure this skill exists to prevent.
 
-### 8. Verify, then close
+### 9. Verify, then close
 
 Walk the acceptance criteria one by one and report evidence per item: the
 command and its result, or what you observed and where. Unmet criteria are
@@ -210,6 +227,8 @@ overrides it. Offer it once; never install it unasked.
 ## Red flags
 
 - Starting to implement, or "just setting up", in the same turn as the yes
+- Cutting a branch before the interview shows the work is large
+- Grinding through questions when the answer is already obvious
 - A restate without an out-of-scope line
 - Accepting "whatever you think" as a terminal answer
 - A criterion with no `verify:`
@@ -221,7 +240,8 @@ overrides it. Offer it once; never install it unasked.
 
 ## Verification
 
-- [ ] Branch is not `main`/`master`
+- [ ] The work was judged large before a branch was cut, or keel exited early
+- [ ] If large: branch is not `main`/`master`
 - [ ] `ISSUE.md` states the problem and contains no solution
 - [ ] `SPEC.md` has criteria, each with `verify:`, plus out-of-scope and stop conditions
 - [ ] A restate was written back, including out of scope
